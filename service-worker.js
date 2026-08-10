@@ -6,8 +6,8 @@ const APP_SHELL = [
   "./ai-generate.js",
   "./firebase-config.js",
   "./manifest.json",
-  "./icons/icon-192.svg",
-  "./icons/icon-512.svg"
+  "./icon-192.svg",
+  "./icon-512.svg"
 ];
 
 self.addEventListener("install", (event) => {
