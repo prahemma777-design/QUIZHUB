@@ -460,20 +460,34 @@ const App = (() => {
 
   function saveDraft() {
     const id = draftQuiz.id || uid("QZ-");
-    db.collection("quizzes").doc(id).set(quizPayload("draft")).then(() => {
-      alert("Saved as draft.");
-      window.location.hash = "teacher";
-      renderTeacherArea();
-    });
+    const btn = event && event.target;
+    if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Saving…`; }
+    db.collection("quizzes").doc(id).set(quizPayload("draft"))
+      .then(() => {
+        alert("Saved as draft.");
+        window.location.hash = "teacher";
+        renderTeacherArea();
+      })
+      .catch(err => {
+        alert("Couldn't save the draft: " + err.message + "\n\nCheck your Firestore rules and firebase-config.js values.");
+        if (btn) { btn.disabled = false; btn.textContent = "Save as draft"; }
+      });
   }
 
   function publishQuiz() {
     if (!validateBeforePublish()) return;
     const id = draftQuiz.id || uid("QZ-");
-    db.collection("quizzes").doc(id).set(quizPayload("published")).then(() => {
-      draftQuiz.id = id;
-      showShare(id);
-    });
+    const btn = event && event.target;
+    if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Publishing…`; }
+    db.collection("quizzes").doc(id).set(quizPayload("published"))
+      .then(() => {
+        draftQuiz.id = id;
+        showShare(id);
+      })
+      .catch(err => {
+        alert("Couldn't publish the quiz: " + err.message + "\n\nCheck your Firestore rules and firebase-config.js values.");
+        if (btn) { btn.disabled = false; btn.textContent = "Publish & get share link"; }
+      });
   }
 
   function resumeEdit(quizId) {
