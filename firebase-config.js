@@ -15,12 +15,12 @@
    ============================================================ */
 
 const firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyCgTCyhSNw1sfvlvb-gowqcch7UENC_TBI",
+  authDomain: "quizhub-5e7d4.firebaseapp.com",
+  projectId: "quizhub-5e7d4",
+  storageBucket: "quizhub-5e7d4.firebasestorage.app",
+  messagingSenderId: "846757024940",
+  appId: "1:846757024940:web:8b44c6ed4cf5599a47fb09"
 };
 
 // Initialize Firebase (compat SDK, loaded via <script> tags in index.html)
