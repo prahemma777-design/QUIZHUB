@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>QUIZHUB</title>
 <meta name="description" content="QUIZHUB — timed, auto-generated quizzes for senior high school classes." />
-<meta name="theme-color" content="#16352B" />
+<meta name="theme-color" content="#046A38" />
 
 <link rel="manifest" href="manifest.json" />
 <link rel="icon" href="icon-192.svg" type="image/svg+xml" />
@@ -28,8 +28,19 @@
 <!-- SheetJS, for the teacher's Excel export -->
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 
+<!-- mammoth.js (.docx) and pdf.js (.pdf), for uploading questions as a document -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>
+  if (window.pdfjsLib) {
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  }
+</script>
+
 <script src="firebase-config.js"></script>
 <script src="ai-generate.js"></script>
+<script src="doc-upload.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

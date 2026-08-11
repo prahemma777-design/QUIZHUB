@@ -60,13 +60,26 @@ const App = (() => {
     return url.toString();
   }
 
-  /* ---------------- Local "session" (no full auth, documented tradeoff) ---------------- */
+  /* ---------------- Local "session" (username/password, no full Firebase Auth — documented tradeoff) ---------------- */
 
   const Session = {
-    getTeacherName() { return localStorage.getItem("quizhub_teacher") || ""; },
-    setTeacherName(name) { localStorage.setItem("quizhub_teacher", name); },
-    clearTeacher() { localStorage.removeItem("quizhub_teacher"); }
+    getUsername() { return localStorage.getItem("quizhub_teacher_username") || ""; },
+    getEmail() { return localStorage.getItem("quizhub_teacher_email") || ""; },
+    setTeacher(username, email) {
+      localStorage.setItem("quizhub_teacher_username", username);
+      localStorage.setItem("quizhub_teacher_email", email || "");
+    },
+    clearTeacher() {
+      localStorage.removeItem("quizhub_teacher_username");
+      localStorage.removeItem("quizhub_teacher_email");
+    }
   };
+
+  async function hashPassword(pw) {
+    const enc = new TextEncoder().encode(pw);
+    const hashBuffer = await crypto.subtle.digest("SHA-256", enc);
+    return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, "0")).join("");
+  }
 
   /* ---------------- Footer & shell ---------------- */
 
@@ -135,22 +148,40 @@ const App = (() => {
      ============================================================ */
 
   function renderTeacherArea() {
-    const name = Session.getTeacherName();
-    if (!name) return renderTeacherLogin();
-    renderTeacherDashboard(name);
+    const username = Session.getUsername();
+    if (!username) return renderTeacherAuth();
+    renderTeacherDashboard(username);
   }
 
-  function renderTeacherLogin() {
+  function renderTeacherAuth(activeTab = "login") {
     shell(`
       <div class="card">
         <p class="eyebrow">Teacher access</p>
-        <h1 class="card-title">Enter your name</h1>
-        <p class="subtext">This is how your quizzes are labelled and filtered on your dashboard. No password needed — keep this device to yourself, or see the setup guide for adding real accounts.</p>
-        <div class="field">
-          <label for="teacherNameInput">Full name</label>
-          <input type="text" id="teacherNameInput" placeholder="e.g. Mr. Kwame Asante" />
+        <h1 class="card-title">${activeTab === "login" ? "Log in" : "Create your account"}</h1>
+        <p class="subtext">Your account keeps your quizzes and results separate from every other teacher using QUIZHUB.</p>
+
+        <div class="tab-row">
+          <button class="tab-btn ${activeTab === "login" ? "active" : ""}" onclick="App.renderTeacherAuth('login')">Log in</button>
+          <button class="tab-btn ${activeTab === "signup" ? "active" : ""}" onclick="App.renderTeacherAuth('signup')">Sign up</button>
         </div>
-        <button class="btn btn-primary btn-block" onclick="App.submitTeacherLogin()">Continue</button>
+
+        <div id="authError"></div>
+
+        ${activeTab === "login" ? `
+          <div class="field"><label>Username</label><input type="text" id="loginUsername" autocomplete="username" /></div>
+          <div class="field"><label>Password</label><input type="password" id="loginPassword" autocomplete="current-password" /></div>
+          <button class="btn btn-primary btn-block" id="loginBtn" onclick="App.submitTeacherLogin()">Log in</button>
+        ` : `
+          <div class="field"><label>Full name</label><input type="text" id="signupName" placeholder="e.g. Mr. Kwame Asante" /></div>
+          <div class="field"><label>Email</label><input type="text" id="signupEmail" autocomplete="email" placeholder="you@school.edu.gh" /></div>
+          <div class="field"><label>Username</label><input type="text" id="signupUsername" autocomplete="username" placeholder="e.g. kwame.asante" /></div>
+          <div class="row">
+            <div class="field"><label>Password</label><input type="password" id="signupPassword" autocomplete="new-password" /></div>
+            <div class="field"><label>Confirm password</label><input type="password" id="signupPassword2" autocomplete="new-password" /></div>
+          </div>
+          <button class="btn btn-primary btn-block" id="signupBtn" onclick="App.submitTeacherSignup()">Create account</button>
+        `}
+
         <p class="small mt-8"><a href="#" onclick="App.goHome();return false;">&larr; Back</a></p>
       </div>
     `);
@@ -158,25 +189,108 @@ const App = (() => {
 
   function goHome() { window.location.hash = ""; window.history.replaceState({}, "", window.location.pathname); route(); }
 
-  function submitTeacherLogin() {
-    const val = document.getElementById("teacherNameInput").value.trim();
-    if (!val) return;
-    Session.setTeacherName(val);
-    renderTeacherArea();
+  async function submitTeacherSignup() {
+    const name = document.getElementById("signupName").value.trim();
+    const email = document.getElementById("signupEmail").value.trim();
+    const username = document.getElementById("signupUsername").value.trim();
+    const pw = document.getElementById("signupPassword").value;
+    const pw2 = document.getElementById("signupPassword2").value;
+    const errEl = document.getElementById("authError");
+    errEl.innerHTML = "";
+
+    if (!name || !email || !username || !pw) {
+      errEl.innerHTML = `<div class="alert alert-error">Please fill in every field.</div>`;
+      return;
+    }
+    if (!/^\S+@\S+\.\S+$/.test(email)) {
+      errEl.innerHTML = `<div class="alert alert-error">That doesn't look like a valid email address.</div>`;
+      return;
+    }
+    if (pw.length < 6) {
+      errEl.innerHTML = `<div class="alert alert-error">Password must be at least 6 characters.</div>`;
+      return;
+    }
+    if (pw !== pw2) {
+      errEl.innerHTML = `<div class="alert alert-error">Passwords don't match.</div>`;
+      return;
+    }
+
+    const usernameKey = slugify(username);
+    const btn = document.getElementById("signupBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Creating account…`;
+
+    try {
+      const ref = db.collection("teachers").doc(usernameKey);
+      const existing = await ref.get();
+      if (existing.exists) {
+        errEl.innerHTML = `<div class="alert alert-error">That username is already taken — please choose another.</div>`;
+        btn.disabled = false; btn.textContent = "Create account";
+        return;
+      }
+      const passwordHash = await hashPassword(pw);
+      await ref.set({ name, email, username, passwordHash, createdAtMs: Date.now() });
+      Session.setTeacher(usernameKey, email);
+      renderTeacherArea();
+    } catch (err) {
+      errEl.innerHTML = `<div class="alert alert-error">Couldn't create the account: ${escapeHtml(err.message)}. Check your Firestore rules allow writes to the "teachers" collection.</div>`;
+      btn.disabled = false; btn.textContent = "Create account";
+    }
+  }
+
+  async function submitTeacherLogin() {
+    const username = document.getElementById("loginUsername").value.trim();
+    const pw = document.getElementById("loginPassword").value;
+    const errEl = document.getElementById("authError");
+    errEl.innerHTML = "";
+
+    if (!username || !pw) {
+      errEl.innerHTML = `<div class="alert alert-error">Enter both your username and password.</div>`;
+      return;
+    }
+
+    const usernameKey = slugify(username);
+    const btn = document.getElementById("loginBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Logging in…`;
+
+    try {
+      const ref = db.collection("teachers").doc(usernameKey);
+      const doc = await ref.get();
+      if (!doc.exists) {
+        errEl.innerHTML = `<div class="alert alert-error">No account found with that username.</div>`;
+        btn.disabled = false; btn.textContent = "Log in";
+        return;
+      }
+      const data = doc.data();
+      const hash = await hashPassword(pw);
+      if (hash !== data.passwordHash) {
+        errEl.innerHTML = `<div class="alert alert-error">Incorrect password.</div>`;
+        btn.disabled = false; btn.textContent = "Log in";
+        return;
+      }
+      Session.setTeacher(usernameKey, data.email);
+      renderTeacherArea();
+    } catch (err) {
+      errEl.innerHTML = `<div class="alert alert-error">Couldn't log in: ${escapeHtml(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = "Log in";
+    }
   }
 
   let teacherQuizzesCache = [];
+  let teacherDisplayName = "";
 
-  function renderTeacherDashboard(name) {
+  function renderTeacherDashboard(usernameKey) {
     shell(`
       <div class="card wide">
         <div class="exam-header">
           <div>
             <p class="eyebrow">Teacher dashboard</p>
-            <h1 class="card-title">${escapeHtml(name)}</h1>
+            <h1 class="card-title">Loading…</h1>
           </div>
           <div class="btn-row">
-            <button class="btn btn-secondary" onclick="App.switchTeacher()">Switch teacher</button>
+            <button class="btn btn-secondary" onclick="App.renderGradebook()">Gradebook</button>
+            <button class="btn btn-secondary" onclick="App.logoutTeacher()">Log out</button>
             <button class="btn btn-primary" onclick="App.renderNewQuizForm()">+ New quiz</button>
           </div>
         </div>
@@ -184,7 +298,15 @@ const App = (() => {
       </div>
     `, { tagline: "Teacher dashboard" });
 
-    db.collection("quizzes").where("teacherName", "==", name)
+    db.collection("teachers").doc(usernameKey).get()
+      .then(doc => {
+        teacherDisplayName = doc.exists ? (doc.data().name || doc.data().username) : usernameKey;
+        const titleEl = document.querySelector(".card-title");
+        if (titleEl) titleEl.textContent = teacherDisplayName;
+      })
+      .catch(() => {});
+
+    db.collection("quizzes").where("teacherUsername", "==", usernameKey)
       .get()
       .then(snap => {
         teacherQuizzesCache = [];
@@ -233,22 +355,23 @@ const App = (() => {
     `;
   }
 
-  function switchTeacher() { Session.clearTeacher(); renderTeacherArea(); }
+  function logoutTeacher() { Session.clearTeacher(); renderTeacherArea(); }
 
   function closeQuiz(quizId) {
     if (!confirm("Close this quiz? Students will no longer be able to open the link.")) return;
-    db.collection("quizzes").doc(quizId).update({ status: "closed" }).then(() => renderTeacherDashboard(Session.getTeacherName()));
+    db.collection("quizzes").doc(quizId).update({ status: "closed" }).then(() => renderTeacherDashboard(Session.getUsername()));
   }
 
   /* ---------------- New quiz / question builder ---------------- */
 
-  let draftQuiz = null; // { teacherName, subject, topics, level, typeOfWork, week, questions: [] }
+  let draftQuiz = null; // { teacherUsername, teacherName, subject, topics, level, typeOfWork, week, classes, questions: [] }
 
   function renderNewQuizForm() {
     draftQuiz = {
-      teacherName: Session.getTeacherName(),
+      teacherUsername: Session.getUsername(),
+      teacherName: teacherDisplayName || Session.getUsername(),
       subject: "", topics: "", level: "SHS2", typeOfWork: "Class Test", week: "",
-      questions: []
+      classes: [], questions: []
     };
     shell(`
       <div class="card wide">
@@ -275,12 +398,47 @@ const App = (() => {
           </div>
           <div class="field"><label>Week</label><input type="text" id="f_week" placeholder="e.g. Week 6" /></div>
         </div>
+        <div class="field">
+          <label>Classes this test is for</label>
+          <div class="row">
+            <input type="text" id="f_classInput" placeholder="e.g. SHS2 Gold" style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addClassChip();}" />
+            <button type="button" class="btn btn-secondary" onclick="App.addClassChip()">Add class</button>
+          </div>
+          <p class="hint">Add each class separately — students will pick theirs from a list, so there's no risk of typos.</p>
+          <div class="chip-row" id="classChipRow"></div>
+        </div>
 
         <hr class="divider" />
         <div id="genOrUpload"></div>
       </div>
     `, { tagline: "New quiz" });
+    renderClassChips();
     renderGenOrUploadChoice();
+  }
+
+  function renderClassChips() {
+    const row = document.getElementById("classChipRow");
+    if (!row) return;
+    row.innerHTML = draftQuiz.classes.map((c, i) => `
+      <span class="chip">${escapeHtml(c)} <button type="button" onclick="App.removeClassChip(${i})" title="Remove">&times;</button></span>
+    `).join("");
+  }
+
+  function addClassChip() {
+    const input = document.getElementById("f_classInput");
+    const val = input.value.trim();
+    if (!val) return;
+    if (!draftQuiz.classes.some(c => c.toLowerCase() === val.toLowerCase())) {
+      draftQuiz.classes.push(val);
+      renderClassChips();
+    }
+    input.value = "";
+    input.focus();
+  }
+
+  function removeClassChip(idx) {
+    draftQuiz.classes.splice(idx, 1);
+    renderClassChips();
   }
 
   function readQuizMeta() {
@@ -346,13 +504,62 @@ const App = (() => {
     if (!validateMetaOrAlert()) return;
     const genArea = document.getElementById("genArea");
     genArea.innerHTML = `
-      <p class="subtext">Paste a JSON array of questions, each shaped like:</p>
-      <pre class="small" style="background:#fff;padding:10px;border-radius:4px;border:1px solid var(--line);overflow:auto">[{"text":"...","options":["A","B","C","D"],"correctIndex":0,"type":"noncalc","dok":2}]</pre>
-      <div class="field"><textarea id="f_uploadJson" rows="8" placeholder="Paste JSON here"></textarea></div>
-      <button class="btn btn-primary" onclick="App.parseUploadedQuestions()">Load questions</button>
-      <p class="small mt-8">Prefer to build questions one at a time instead? <a href="#" onclick="App.addBlankQuestion();return false;">Start with a blank question</a>.</p>
+      <p class="subtext">Upload a spreadsheet or document of questions — no JSON needed.</p>
+
+      <div class="row">
+        <div class="field" style="flex:1 1 260px">
+          <label>Excel / CSV file</label>
+          <input type="file" id="f_uploadDoc" accept=".xlsx,.xls,.csv,.docx,.pdf,.txt" onchange="App.handleDocUpload(this)" />
+          <p class="hint">Columns: Question, Option A–D, Answer (A–D), Type (calc/noncalc), DOK (1–4).
+            <a href="#" onclick="DocUpload.downloadExcelTemplate();return false;">Download a template</a>.</p>
+        </div>
+      </div>
+
+      <div class="alert alert-info" style="margin-top:6px">
+        <strong>Word doc, PDF, or plain text?</strong> Same file box works for <code>.docx</code>, <code>.pdf</code> or <code>.txt</code> —
+        type one question per block, like this, with a blank line between questions:
+        <pre class="small" style="background:#fff;padding:8px 10px;border-radius:4px;border:1px solid var(--line);overflow:auto;margin:8px 0 0">1. Question text goes here?
+A. First option
+B. Second option
+C. Third option
+D. Fourth option
+Answer: B
+Type: noncalc
+DOK: 2</pre>
+      </div>
+
       <div id="genStatus" class="mt-24"></div>
+
+      <p class="small mt-24">
+        <a href="#" onclick="App.togglePasteJson();return false;" id="toggleJsonLink">Prefer to paste raw JSON instead?</a> ·
+        <a href="#" onclick="App.addBlankQuestion();return false;">Start with a blank question</a>
+      </p>
+      <div id="jsonPasteArea" class="hidden mt-24">
+        <div class="field"><textarea id="f_uploadJson" rows="8" placeholder='[{"text":"...","options":["A","B","C","D"],"correctIndex":0,"type":"noncalc","dok":2}]'></textarea></div>
+        <button class="btn btn-secondary" onclick="App.parseUploadedQuestions()">Load JSON</button>
+      </div>
     `;
+  }
+
+  function togglePasteJson() {
+    const area = document.getElementById("jsonPasteArea");
+    area.classList.toggle("hidden");
+  }
+
+  async function handleDocUpload(inputEl) {
+    const file = inputEl.files && inputEl.files[0];
+    if (!file) return;
+    const statusEl = document.getElementById("genStatus");
+    statusEl.innerHTML = `<div class="btn-row" style="align-items:center"><span class="spinner dark"></span><span class="small">Reading ${escapeHtml(file.name)}…</span></div>`;
+    try {
+      const questions = await DocUpload.parseAnyFile(file);
+      draftQuiz.questions = questions;
+      statusEl.innerHTML = `<div class="alert alert-success">Loaded ${questions.length} questions from ${escapeHtml(file.name)}. Review below, then publish.</div>`;
+      renderQuestionEditor();
+    } catch (err) {
+      statusEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message)}</div>`;
+    }
+    inputEl.value = "";
   }
 
   function parseUploadedQuestions() {
@@ -435,12 +642,14 @@ const App = (() => {
 
   function quizPayload(status) {
     return {
+      teacherUsername: draftQuiz.teacherUsername,
       teacherName: draftQuiz.teacherName,
       subject: draftQuiz.subject,
       topics: draftQuiz.topics,
       level: draftQuiz.level,
       typeOfWork: draftQuiz.typeOfWork,
       week: draftQuiz.week,
+      classes: draftQuiz.classes || [],
       questions: draftQuiz.questions,
       status,
       createdAtMs: Date.now()
@@ -448,6 +657,10 @@ const App = (() => {
   }
 
   function validateBeforePublish() {
+    if (!draftQuiz.classes || draftQuiz.classes.length === 0) {
+      alert("Add at least one class this test is for, so students have something to pick from.");
+      return false;
+    }
     if (draftQuiz.questions.length === 0) { alert("Add at least one question first."); return false; }
     for (const q of draftQuiz.questions) {
       if (!q.text.trim() || q.options.some(o => !o.trim())) {
@@ -493,13 +706,14 @@ const App = (() => {
   function resumeEdit(quizId) {
     const q = teacherQuizzesCache.find(x => x.id === quizId);
     if (!q) return;
-    draftQuiz = { ...q };
     renderNewQuizForm();
+    draftQuiz = { ...q, classes: [...(q.classes || [])], questions: [...(q.questions || [])] };
     document.getElementById("f_subject").value = q.subject;
     document.getElementById("f_topics").value = q.topics;
     document.getElementById("f_level").value = q.level;
     document.getElementById("f_type").value = q.typeOfWork;
     document.getElementById("f_week").value = q.week;
+    renderClassChips();
     renderQuestionEditor();
   }
 
@@ -586,6 +800,144 @@ const App = (() => {
     XLSX.writeFile(wb, `quizhub_${quizId}_results.xlsx`);
   }
 
+  /* ---------------- Gradebook (all classes, all assessments) ---------------- */
+  // Groups every submission across every one of this teacher's quizzes by
+  // the CLASS the student picked, with one column per assessment
+  // (subject · type · week). This is what keeps a Week 6 Quiz and a
+  // Week 14 Quiz — or two different classes — from ever mixing scores.
+
+  let gradebookData = null; // { classNames: [...], byClass: { className: { assessments: [...], students: { key: {name, marks: {assessmentKey: {score,total,pct}}} } } } }
+  let gradebookActiveClass = null;
+
+  function assessmentKey(quiz) {
+    return `${quiz.subject} · ${quiz.typeOfWork} · Wk${quiz.week}`;
+  }
+
+  async function renderGradebook() {
+    shell(`
+      <div class="card wide">
+        <div class="exam-header">
+          <div>
+            <p class="eyebrow">Gradebook</p>
+            <h1 class="card-title">All classes, all assessments</h1>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-primary" id="gbExportBtn" onclick="App.exportGradebook()">Export Excel (one sheet per class)</button>
+            <button class="btn btn-secondary" onclick="window.location.hash='teacher';App.renderTeacherArea();">&larr; Back to dashboard</button>
+          </div>
+        </div>
+        <div id="gradebookWrap"><p class="small">Loading every quiz and submission — this can take a moment…</p></div>
+      </div>
+    `, { tagline: "Gradebook" });
+
+    try {
+      const usernameKey = Session.getUsername();
+      const quizSnap = await db.collection("quizzes").where("teacherUsername", "==", usernameKey).get();
+      const quizzes = [];
+      quizSnap.forEach(d => quizzes.push({ id: d.id, ...d.data() }));
+
+      const byClass = {};
+      for (const quiz of quizzes) {
+        const subSnap = await db.collection("quizzes").doc(quiz.id).collection("submissions").get();
+        const aKey = assessmentKey(quiz);
+        subSnap.forEach(sd => {
+          const sub = sd.data();
+          const className = sub.className || "Unassigned class";
+          if (!byClass[className]) byClass[className] = { assessments: new Set(), students: {} };
+          byClass[className].assessments.add(aKey);
+          const studentKey = slugify(sub.surname, sub.firstName, sub.middleName);
+          if (!byClass[className].students[studentKey]) {
+            byClass[className].students[studentKey] = {
+              name: `${sub.surname}, ${sub.firstName}${sub.middleName ? " " + sub.middleName : ""}`,
+              marks: {}
+            };
+          }
+          byClass[className].students[studentKey].marks[aKey] = {
+            score: sub.score, total: sub.totalQuestions, pct: sub.percentage || 0
+          };
+        });
+      }
+
+      const classNames = Object.keys(byClass).sort();
+      gradebookData = { classNames, byClass };
+      gradebookActiveClass = classNames[0] || null;
+      renderGradebookView();
+    } catch (err) {
+      document.getElementById("gradebookWrap").innerHTML =
+        `<div class="alert alert-error">Couldn't build the gradebook: ${escapeHtml(err.message)}</div>`;
+    }
+  }
+
+  function switchGradebookClass(className) {
+    gradebookActiveClass = className;
+    renderGradebookView();
+  }
+
+  function renderGradebookView() {
+    const wrap = document.getElementById("gradebookWrap");
+    if (!gradebookData || gradebookData.classNames.length === 0) {
+      wrap.innerHTML = `<p class="small">No submissions yet across any of your quizzes.</p>`;
+      return;
+    }
+
+    const tabs = gradebookData.classNames.map(c => `
+      <button class="${c === gradebookActiveClass ? "active" : ""}" onclick="App.switchGradebookClass('${escapeHtml(c).replace(/'/g, "\\'")}')">${escapeHtml(c)}</button>
+    `).join("");
+
+    const cls = gradebookData.byClass[gradebookActiveClass];
+    const assessments = Array.from(cls.assessments).sort();
+    const students = Object.values(cls.students).sort((a, b) => a.name.localeCompare(b.name));
+
+    const headerRow = `<tr><th>Student</th>${assessments.map(a => `<th>${escapeHtml(a)}</th>`).join("")}</tr>`;
+    const bodyRows = students.map(s => `
+      <tr>
+        <td>${escapeHtml(s.name)}</td>
+        ${assessments.map(a => {
+          const m = s.marks[a];
+          return `<td>${m ? `${m.score}/${m.total} (${m.pct.toFixed(0)}%)` : "—"}</td>`;
+        }).join("")}
+      </tr>
+    `).join("");
+
+    wrap.innerHTML = `
+      <div class="gradebook-tabs">${tabs}</div>
+      <div class="table-wrap">
+        <table class="gradebook">
+          <thead>${headerRow}</thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function exportGradebook() {
+    if (!gradebookData || gradebookData.classNames.length === 0) {
+      alert("No submissions to export yet.");
+      return;
+    }
+    const wb = XLSX.utils.book_new();
+    gradebookData.classNames.forEach(className => {
+      const cls = gradebookData.byClass[className];
+      const assessments = Array.from(cls.assessments).sort();
+      const students = Object.values(cls.students).sort((a, b) => a.name.localeCompare(b.name));
+
+      const rows = students.map(s => {
+        const row = { Student: s.name };
+        assessments.forEach(a => {
+          const m = s.marks[a];
+          row[a] = m ? `${m.score}/${m.total} (${m.pct.toFixed(0)}%)` : "";
+        });
+        return row;
+      });
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      // Excel sheet names: max 31 chars, no \ / ? * [ ] :
+      const safeName = className.replace(/[\\/?*\[\]:]/g, "").slice(0, 31) || "Class";
+      XLSX.utils.book_append_sheet(wb, ws, safeName);
+    });
+    XLSX.writeFile(wb, `quizhub_gradebook_${Session.getUsername()}.xlsx`);
+  }
+
   /* ============================================================
      STUDENT AREA
      ============================================================ */
@@ -639,7 +991,15 @@ const App = (() => {
               <option ${quiz.level === "SHS3" ? "selected" : ""}>SHS3</option>
             </select>
           </div>
-          <div class="field"><label>Class</label><input type="text" id="r_class" placeholder="e.g. SHS2 Gold" /></div>
+          <div class="field"><label>Class</label>
+            ${(quiz.classes && quiz.classes.length > 0)
+              ? `<select id="r_class">
+                  <option value="" disabled selected>Choose your class…</option>
+                  ${quiz.classes.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}
+                </select>`
+              : `<input type="text" id="r_class" placeholder="e.g. SHS2 Gold" />`
+            }
+          </div>
         </div>
 
         <div class="alert alert-info">Rules: once you select an answer it locks in immediately and you move to the next question — there's no going back, and each account (name + class) can only attempt this quiz once.</div>
@@ -772,12 +1132,7 @@ const App = (() => {
     const buttons = document.querySelectorAll("#optionsWrap .option");
     buttons.forEach(btn => { btn.disabled = true; });
     if (selectedOi >= 0) {
-      const chosenBtn = buttons[selectedOi];
-      chosenBtn.classList.add("selected");
-      const stamp = document.createElement("span");
-      stamp.className = "stamp";
-      stamp.textContent = "LOCKED";
-      chosenBtn.appendChild(stamp);
+      buttons[selectedOi].classList.add("selected");
     }
 
     activeAnswers.push({
@@ -877,11 +1232,14 @@ const App = (() => {
   }
 
   return {
-    init, goTeacher, goHome, submitTeacherLogin, switchTeacher,
-    renderNewQuizForm, startAIGeneration, runGeneration, showUploadForm,
-    parseUploadedQuestions, addBlankQuestion, updateQ, updateOpt, removeQ,
+    init, goTeacher, goHome,
+    renderTeacherAuth, submitTeacherSignup, submitTeacherLogin, logoutTeacher,
+    renderNewQuizForm, addClassChip, removeClassChip,
+    startAIGeneration, runGeneration, showUploadForm,
+    togglePasteJson, handleDocUpload, parseUploadedQuestions, addBlankQuestion, updateQ, updateOpt, removeQ,
     saveDraft, publishQuiz, resumeEdit, showShare, closeQuiz,
     renderResults, exportResults, renderTeacherArea,
+    renderGradebook, switchGradebookClass, exportGradebook,
     beginAttempt, selectAnswer, downloadSummary
   };
 })();

@@ -1,9 +1,10 @@
-const CACHE_NAME = "quizhub-v2";
+const CACHE_NAME = "quizhub-v4";
 const APP_SHELL = [
   "./index.html",
   "./style.css",
   "./app.js",
   "./ai-generate.js",
+  "./doc-upload.js",
   "./firebase-config.js",
   "./manifest.json",
   "./icon-192.svg",

@@ -41,13 +41,21 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    match /teachers/{username} {
+      // Needed so the login screen can look up a username and compare
+      // password hashes client-side (see the security note below).
+      allow read: if true;
+      allow create: if !exists(/databases/$(database)/documents/teachers/$(username));
+      allow update: if false;
+      allow delete: if false;
+    }
+
     match /quizzes/{quizId} {
       allow read: if true;
       allow create, update: if true;
-      // Teachers are identified only by name typed into the app (see
-      // section 4, "Security model & limitations") — there is no real
-      // login, so writes can't be restricted to "the right" teacher
-      // without adding Firebase Authentication.
+      // Teachers are identified by the account created at signup — there
+      // is no Firebase Authentication behind it, so writes still can't be
+      // cryptographically restricted to "the right" teacher (see below).
 
       match /submissions/{submissionId} {
         allow read: if true;
@@ -85,7 +93,7 @@ These rules stop the most common issues (overwriting another student's attempt, 
 
 Being upfront about the trade-offs of a backend-free app:
 
-- **No real teacher login.** "Teacher access" is just a name typed into the browser, stored in that browser's local storage. It's enough to keep quizzes organised and stop students from stumbling into the dashboard, but it is **not** a password — anyone who knows (or guesses) a teacher's name and opens the teacher dashboard could technically create or edit quizzes under that name. If you need real accounts, ask Claude to add Firebase Authentication (email/password or Google sign-in) in a follow-up.
+- **No real teacher login.** Signing up creates a document in Firestore's `teachers` collection with your username, email, and a SHA-256 **hash** of your password (never the password itself). This stops the most casual snooping, but it is **not** the same as proper authentication — there's no session token, no email verification, and (because `allow read: if true` is needed for the login screen to check a password) anyone technical enough to open Firestore directly could read the stored hashes and attempt to crack a weak password offline. Don't reuse an important password here. If you need real accounts, ask Claude to add Firebase Authentication (email/password sign-in) in a follow-up — that removes this limitation entirely.
 - **The answer key does reach the browser.** Unlike a fully server-graded system, each question's `correctIndex` is part of the quiz document a student's browser downloads to run the quiz (this is what makes instant auto-grading and offline-friendly timing possible without a backend). A technically determined student could open browser dev tools and read the Firestore response to see correct answers early. The app never displays the answer key during the quiz, and the Firestore rules above stop tampering with scores after submission — but this is a real limitation of an app with no server, not just this one.
 - **No-retry is enforced by document ID, not just the UI.** A submission's Firestore document ID is generated from the student's name + class, so even a student editing the page's JavaScript can't create a second submission with the same identity — Firestore itself will refuse it (see the `allow create` rule above).
 - **Duplicate names across classes are fine.** Because the ID includes the class, "Mensah, Ama" in SHS2 Gold and "Mensah, Ama" in SHS2 Blue are treated as different people, as expected.
@@ -98,10 +106,11 @@ If this app will be used for high-stakes exams (not just class quizzes), conside
 
 | File | Purpose |
 |---|---|
-| `index.html` | App shell, loads fonts, Firebase, SheetJS, and the app scripts |
-| `style.css` | The exam-booklet design system (colors, type, components) |
-| `app.js` | All routing, teacher dashboard, quiz runner, grading, Excel export |
+| `index.html` | App shell, loads fonts, Firebase, SheetJS, mammoth/pdf.js, and the app scripts |
+| `style.css` | The Ghana-palette exam-booklet design system (colors, type, components) |
+| `app.js` | Routing, teacher accounts, quiz builder, quiz runner, grading, gradebook |
 | `ai-generate.js` | Builds the prompt and parses Claude's response into question objects |
+| `doc-upload.js` | Parses questions from an uploaded Excel/CSV, Word, PDF, or text file |
 | `firebase-config.js` | Your Firebase project credentials (edit this first) |
 | `manifest.json` / `service-worker.js` | Makes the app installable and gives it an offline app shell |
 | `icons/` | App icons (SVG) |
