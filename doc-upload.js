@@ -1,8 +1,30 @@
 /* ============================================================
-   QUIZHUB — Document upload parser
-   Lets a teacher upload an Excel/CSV sheet or a Word/text document
-   of questions instead of hand-typing JSON. Converts either format
-   into the same question object shape the rest of the app expects.
+   QUIZHUB — Question Upload / Text Parser
+   Lets a teacher supply questions by typing/pasting plain text
+   (from Word, notes, anywhere), or uploading a .docx / .pdf /
+   .txt file. No spreadsheet format — writing MCQs in a
+   spreadsheet grid isn't realistic, so this focuses entirely on
+   natural question text.
+
+   Template teachers should follow (numbers + lettered options):
+
+     1. What is a normal profit?
+     A) Some wrong answer
+     B) Another wrong answer
+     C) The correct answer
+     D) A distractor
+     Answer: C
+     Type: noncalc
+     DOK: 1
+
+     2. Next question...
+
+   - Number each question ("1.", "2.", ...) and letter each
+     option ("A)", "B)", "C)", "D)").
+   - Mark the right option with an "Answer: <letter>" line, OR
+     put a "*" next to the correct option itself — either works.
+   - "Type:" (calc/noncalc) and "DOK:" (1-4) are optional and
+     default to noncalc / DOK 1 if left out.
    ============================================================ */
 
 const DocUpload = (() => {
@@ -14,7 +36,7 @@ const DocUpload = (() => {
     if (options.some(o => !o)) throw new Error(`Question ${idx + 1} needs all 4 options filled in.`);
     let correctIndex = Number(q.correctIndex);
     if (!(correctIndex >= 0 && correctIndex <= 3)) {
-      throw new Error(`Question ${idx + 1}'s answer letter/column didn't match A–D. Check it and try again.`);
+      throw new Error(`Question ${idx + 1} has no clearly marked correct answer. Add "Answer: <letter>" or a "*" next to the right option.`);
     }
     const type = String(q.type || "").toLowerCase().startsWith("calc") ? "calc" : "noncalc";
     const dokNum = Number(q.dok);
@@ -28,139 +50,79 @@ const DocUpload = (() => {
   function letterToIndex(val) {
     const s = String(val ?? "").trim().toUpperCase();
     if (["A", "B", "C", "D"].includes(s)) return s.charCodeAt(0) - 65;
-    const n = Number(s);
-    if (Number.isInteger(n) && n >= 0 && n <= 3) return n;      // already 0-based
-    if (Number.isInteger(n) && n >= 1 && n <= 4) return n - 1;  // 1-based
     return NaN;
   }
 
-  /* ---------------- Excel / CSV ---------------- */
-  // Expected columns (header row, any casing/order):
-  // Question | Option A | Option B | Option C | Option D | Answer | Type | DOK
-
-  function parseWorkbookFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          const wb = XLSX.read(e.target.result, { type: "array" });
-          const sheet = wb.Sheets[wb.SheetNames[0]];
-          const rows = XLSX.utils.sheet_to_json(sheet, { defval: "" });
-          if (rows.length === 0) throw new Error("The sheet has no data rows.");
-
-          const findCol = (row, ...names) => {
-            const keys = Object.keys(row);
-            for (const name of names) {
-              const hit = keys.find(k => k.trim().toLowerCase() === name);
-              if (hit) return hit;
-            }
-            return null;
-          };
-
-          const questions = rows.map((row, i) => {
-            const qCol = findCol(row, "question", "question text");
-            const aCol = findCol(row, "option a", "a");
-            const bCol = findCol(row, "option b", "b");
-            const cCol = findCol(row, "option c", "c");
-            const dCol = findCol(row, "option d", "d");
-            const ansCol = findCol(row, "answer", "correct answer", "correct");
-            const typeCol = findCol(row, "type");
-            const dokCol = findCol(row, "dok", "dok level");
-
-            return cleanQuestion({
-              text: qCol ? row[qCol] : "",
-              options: [aCol, bCol, cCol, dCol].map(c => c ? row[c] : ""),
-              correctIndex: letterToIndex(ansCol ? row[ansCol] : ""),
-              type: typeCol ? row[typeCol] : "noncalc",
-              dok: dokCol ? row[dokCol] : 1
-            }, i);
-          });
-
-          resolve(questions);
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = () => reject(new Error("Couldn't read that file."));
-      reader.readAsArrayBuffer(file);
-    });
-  }
-
-  function downloadExcelTemplate() {
-    const sample = [
-      {
-        Question: "Normal profit is best described as:",
-        "Option A": "The minimum reward needed to keep a firm's resources in their present use",
-        "Option B": "Any profit earned above total cost",
-        "Option C": "A loss incurred in the short run",
-        "Option D": "Profit that only exists in monopoly markets",
-        Answer: "A",
-        Type: "noncalc",
-        DOK: 1
-      }
-    ];
-    const ws = XLSX.utils.json_to_sheet(sample);
-    ws["!cols"] = [{ wch: 40 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 28 }, { wch: 8 }, { wch: 10 }, { wch: 6 }];
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Questions");
-    XLSX.writeFile(wb, "quizhub_question_template.xlsx");
-  }
-
-  /* ---------------- Word (.docx) / plain text ---------------- */
-  // Expected pattern, one question per block, blank line between blocks:
-  //
-  // 1. Question text goes here?
-  // A. First option
-  // B. Second option
-  // C. Third option
-  // D. Fourth option
-  // Answer: B
-  // Type: calc
-  // DOK: 3
+  /* ---------------- Numbered-question / lettered-option text parser ---------------- */
+  // Handles both "blank line between questions" AND questions that run
+  // straight into each other, as long as each starts with "N." or "N)".
 
   function parseTextContent(rawText) {
-    const blocks = rawText
+    const text = String(rawText || "")
       .replace(/\r\n/g, "\n")
-      .split(/\n\s*\n/)
-      .map(b => b.trim())
-      .filter(Boolean);
+      .replace(/\u2018|\u2019/g, "'")
+      .replace(/\u201c|\u201d/g, '"');
 
-    if (blocks.length === 0) throw new Error("No questions found in that document.");
+    const lines = text.split("\n");
+    const qStartRegex = /^\s*(\d{1,3})[\.\)]\s+(\S.*)$/;
+    const optRegex = /^\s*\(?([A-Da-d])[\.\)]\s*(.*)$/;
+    const answerRegex = /^\s*Answer\s*[:\-]\s*\(?([A-Da-d])\)?/i;
+    const typeRegex = /^\s*Type\s*[:\-]\s*([A-Za-z-]+)/i;
+    const dokRegex = /^\s*DOK\s*[:\-]\s*([1-4])/i;
 
-    return blocks.map((block, i) => {
-      const lines = block.split("\n").map(l => l.trim()).filter(Boolean);
-      const optionLines = { A: "", B: "", C: "", D: "" };
-      let answer = "", type = "noncalc", dok = "1";
-      const textLines = [];
+    const blocks = [];
+    let current = null;
 
-      lines.forEach(line => {
-        const optMatch = line.match(/^([A-D])[\.\)]\s*(.+)$/i);
-        const ansMatch = line.match(/^answer\s*[:\-]\s*(.+)$/i);
-        const typeMatch = line.match(/^type\s*[:\-]\s*(.+)$/i);
-        const dokMatch = line.match(/^dok\s*[:\-]\s*(.+)$/i);
+    for (const rawLine of lines) {
+      const line = rawLine.trim();
+      const qMatch = line.match(qStartRegex);
+      if (qMatch) {
+        if (current) blocks.push(current);
+        current = { textLines: [qMatch[2]], optionLetters: { A: "", B: "", C: "", D: "" }, answer: "", type: "", dok: "" };
+        continue;
+      }
+      if (!current) continue; // skip any preamble before question 1
+      if (!line) continue;
 
-        if (optMatch) {
-          optionLines[optMatch[1].toUpperCase()] = optMatch[2].trim();
-        } else if (ansMatch) {
-          answer = ansMatch[1].trim();
-        } else if (typeMatch) {
-          type = typeMatch[1].trim();
-        } else if (dokMatch) {
-          dok = dokMatch[1].trim();
-        } else {
-          // strip a leading "1." / "Q1." style question number
-          textLines.push(line.replace(/^(?:Q\.?\s*)?\d+[\.\)]\s*/i, ""));
+      const optMatch = line.match(optRegex);
+      const ansMatch = line.match(answerRegex);
+      const typeMatch = line.match(typeRegex);
+      const dokMatch = line.match(dokRegex);
+
+      if (ansMatch) {
+        current.answer = ansMatch[1].toUpperCase();
+      } else if (typeMatch) {
+        current.type = typeMatch[1];
+      } else if (dokMatch) {
+        current.dok = dokMatch[1];
+      } else if (optMatch) {
+        let optText = optMatch[2];
+        const letter = optMatch[1].toUpperCase();
+        if (/\*/.test(optText)) {
+          current.answer = letter;
+          optText = optText.replace(/\*/g, "").trim();
         }
-      });
+        current.optionLetters[letter] = optText.trim();
+      } else {
+        current.textLines.push(line);
+      }
+    }
+    if (current) blocks.push(current);
 
-      return cleanQuestion({
-        text: textLines.join(" ").trim(),
-        options: [optionLines.A, optionLines.B, optionLines.C, optionLines.D],
-        correctIndex: letterToIndex(answer),
-        type, dok
-      }, i);
-    });
+    if (blocks.length === 0) {
+      throw new Error('No questions found. Make sure each question starts with a number, like "1. Your question text?".');
+    }
+
+    return blocks.map((b, i) => cleanQuestion({
+      text: b.textLines.join(" ").trim(),
+      options: [b.optionLetters.A, b.optionLetters.B, b.optionLetters.C, b.optionLetters.D],
+      correctIndex: letterToIndex(b.answer),
+      type: b.type,
+      dok: b.dok
+    }, i));
   }
+
+  /* ---------------- File upload: .docx / .pdf / .txt ---------------- */
 
   function parseDocxFile(file) {
     return new Promise((resolve, reject) => {
@@ -168,7 +130,7 @@ const DocUpload = (() => {
       reader.onload = async (e) => {
         try {
           if (typeof mammoth === "undefined") {
-            throw new Error("The document reader library didn't load — check your internet connection and try again.");
+            throw new Error('The Word-reading library didn\'t load (often an ad blocker or offline connection). Try "Paste text instead" below rather than uploading the file.');
           }
           const result = await mammoth.extractRawText({ arrayBuffer: e.target.result });
           resolve(parseTextContent(result.value));
@@ -181,24 +143,9 @@ const DocUpload = (() => {
     });
   }
 
-  function parseTxtFile(file) {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        try {
-          resolve(parseTextContent(e.target.result));
-        } catch (err) {
-          reject(err);
-        }
-      };
-      reader.onerror = () => reject(new Error("Couldn't read that file."));
-      reader.readAsText(file);
-    });
-  }
-
   async function parsePdfFile(file) {
     if (typeof pdfjsLib === "undefined") {
-      throw new Error("The PDF reader library didn't load — check your internet connection and try again.");
+      throw new Error('The PDF-reading library didn\'t load (often an ad blocker or offline connection). Try "Paste text instead" below rather than uploading the file.');
     }
     const arrayBuffer = await file.arrayBuffer();
     const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -206,8 +153,6 @@ const DocUpload = (() => {
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
       const content = await page.getTextContent();
-      // pdf.js strips line breaks; item.hasEOL marks the end of a visual line,
-      // which we need to tell questions/options apart.
       let pageText = "";
       content.items.forEach((item) => {
         pageText += item.str + (item.hasEOL ? "\n" : " ");
@@ -217,22 +162,25 @@ const DocUpload = (() => {
     return parseTextContent(text);
   }
 
-  async function parseAnyFile(file) {
-    const name = file.name.toLowerCase();
-    if (name.endsWith(".xlsx") || name.endsWith(".xls") || name.endsWith(".csv")) {
-      return parseWorkbookFile(file);
-    }
-    if (name.endsWith(".docx")) {
-      return parseDocxFile(file);
-    }
-    if (name.endsWith(".pdf")) {
-      return parsePdfFile(file);
-    }
-    if (name.endsWith(".txt")) {
-      return parseTxtFile(file);
-    }
-    throw new Error("Please upload a .xlsx, .csv, .docx, .pdf, or .txt file.");
+  function parseTxtFile(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try { resolve(parseTextContent(e.target.result)); }
+        catch (err) { reject(err); }
+      };
+      reader.onerror = () => reject(new Error("Couldn't read that file."));
+      reader.readAsText(file);
+    });
   }
 
-  return { parseAnyFile, parseTextContent, downloadExcelTemplate };
+  async function parseAnyFile(file) {
+    const name = file.name.toLowerCase();
+    if (name.endsWith(".docx")) return parseDocxFile(file);
+    if (name.endsWith(".pdf")) return parsePdfFile(file);
+    if (name.endsWith(".txt")) return parseTxtFile(file);
+    throw new Error("Please upload a .docx, .pdf, or .txt file — or use \"Paste text instead\" below.");
+  }
+
+  return { parseAnyFile, parseTextContent };
 })();

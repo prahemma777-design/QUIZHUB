@@ -504,28 +504,30 @@ const App = (() => {
     if (!validateMetaOrAlert()) return;
     const genArea = document.getElementById("genArea");
     genArea.innerHTML = `
-      <p class="subtext">Upload a spreadsheet or document of questions — no JSON needed.</p>
+      <p class="subtext">Type or paste your questions below, or upload a Word/PDF/text file — whichever's easier.</p>
 
-      <div class="row">
-        <div class="field" style="flex:1 1 260px">
-          <label>Excel / CSV file</label>
-          <input type="file" id="f_uploadDoc" accept=".xlsx,.xls,.csv,.docx,.pdf,.txt" onchange="App.handleDocUpload(this)" />
-          <p class="hint">Columns: Question, Option A–D, Answer (A–D), Type (calc/noncalc), DOK (1–4).
-            <a href="#" onclick="DocUpload.downloadExcelTemplate();return false;">Download a template</a>.</p>
-        </div>
-      </div>
-
-      <div class="alert alert-info" style="margin-top:6px">
-        <strong>Word doc, PDF, or plain text?</strong> Same file box works for <code>.docx</code>, <code>.pdf</code> or <code>.txt</code> —
-        type one question per block, like this, with a blank line between questions:
-        <pre class="small" style="background:#fff;padding:8px 10px;border-radius:4px;border:1px solid var(--line);overflow:auto;margin:8px 0 0">1. Question text goes here?
-A. First option
-B. Second option
-C. Third option
-D. Fourth option
+      <div class="field">
+        <label>Type or paste your questions here</label>
+        <textarea id="f_pasteText" rows="10" placeholder="1. Question text goes here?
+A) First option
+B) Second option
+C) Third option
+D) Fourth option
 Answer: B
 Type: noncalc
-DOK: 2</pre>
+DOK: 2
+
+2. Next question..."></textarea>
+        <p class="hint">Number each question, letter each option A–D, and mark the right one with "Answer: B" (or a "*" next to it). "Type:" and "DOK:" are optional.</p>
+      </div>
+      <button class="btn btn-primary" onclick="App.parsePastedText()">Load these questions</button>
+
+      <hr class="divider" />
+
+      <div class="dropzone" id="fileDropzone" onclick="document.getElementById('f_uploadDoc').click()">
+        <div class="dz-title">Or upload a file instead</div>
+        <p class="small">.docx, .pdf, or .txt — same numbered format as above</p>
+        <input type="file" id="f_uploadDoc" accept=".docx,.pdf,.txt" onchange="App.handleDocUpload(this)" />
       </div>
 
       <div id="genStatus" class="mt-24"></div>
@@ -539,6 +541,23 @@ DOK: 2</pre>
         <button class="btn btn-secondary" onclick="App.parseUploadedQuestions()">Load JSON</button>
       </div>
     `;
+  }
+
+  function parsePastedText() {
+    const raw = document.getElementById("f_pasteText").value;
+    const statusEl = document.getElementById("genStatus");
+    if (!raw.trim()) {
+      statusEl.innerHTML = `<div class="alert alert-error">Paste or type some questions first.</div>`;
+      return;
+    }
+    try {
+      const questions = DocUpload.parseTextContent(raw);
+      draftQuiz.questions = questions;
+      statusEl.innerHTML = `<div class="alert alert-success">Loaded ${questions.length} questions. Review below, then publish.</div>`;
+      renderQuestionEditor();
+    } catch (err) {
+      statusEl.innerHTML = `<div class="alert alert-error">${escapeHtml(err.message)}</div>`;
+    }
   }
 
   function togglePasteJson() {
@@ -1235,7 +1254,7 @@ DOK: 2</pre>
     init, goTeacher, goHome,
     renderTeacherAuth, submitTeacherSignup, submitTeacherLogin, logoutTeacher,
     renderNewQuizForm, addClassChip, removeClassChip,
-    startAIGeneration, runGeneration, showUploadForm,
+    startAIGeneration, runGeneration, showUploadForm, parsePastedText,
     togglePasteJson, handleDocUpload, parseUploadedQuestions, addBlankQuestion, updateQ, updateOpt, removeQ,
     saveDraft, publishQuiz, resumeEdit, showShare, closeQuiz,
     renderResults, exportResults, renderTeacherArea,
