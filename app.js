@@ -424,8 +424,8 @@ const App = (() => {
       </div>
       ${items}
       <hr class="divider" />
-      <button class="btn btn-primary btn-block" onclick="App.publishQuiz()">Publish &amp; get share link</button>
-      <button class="btn btn-secondary btn-block mt-8" onclick="App.saveDraft()">Save as draft</button>
+      <button class="btn btn-primary btn-block" onclick="App.publishQuiz(event)">Publish &amp; get share link</button>
+      <button class="btn btn-secondary btn-block mt-8" onclick="App.saveDraft(event)">Save as draft</button>
     `;
   }
 
@@ -458,9 +458,9 @@ const App = (() => {
     return true;
   }
 
-  function saveDraft() {
+  function saveDraft(evt) {
     const id = draftQuiz.id || uid("QZ-");
-    const btn = event && event.target;
+    const btn = evt && evt.target;
     if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Saving…`; }
     db.collection("quizzes").doc(id).set(quizPayload("draft"))
       .then(() => {
@@ -474,10 +474,10 @@ const App = (() => {
       });
   }
 
-  function publishQuiz() {
+  function publishQuiz(evt) {
     if (!validateBeforePublish()) return;
     const id = draftQuiz.id || uid("QZ-");
-    const btn = event && event.target;
+    const btn = evt && evt.target;
     if (btn) { btn.disabled = true; btn.innerHTML = `<span class="spinner"></span> Publishing…`; }
     db.collection("quizzes").doc(id).set(quizPayload("published"))
       .then(() => {
