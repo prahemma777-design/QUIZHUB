@@ -1,20 +1,15 @@
 /* ============================================================
    QUIZHUB — Design tokens
-   Concept: an invigilator's desk / exam booklet. Deep ink-green
-   field, parchment paper cards, red-ink accent for timing &
-   warnings, brass-gold for stamps, dividers & seals.
+   Concept: exam booklet meets Ghanaian identity. One green
+   (flag/forest), one gold, one red — no extra shades — plus a
+   subtle Adinkra/castle/museum motif pattern on the green field.
    ============================================================ */
 :root {
   --ink-green: #046A38;
-  --ink-green-deep: #033623;
   --parchment: #FBF3E1;
   --parchment-dim: #F2E6C9;
   --red-ink: #CE1126;
-  --red-ink-bright: #E5142B;
-  --brass: #9C7209;
-  --brass-light: #C99A1F;
-  --gold-bright: #FCD116;
-  --kente-black: #1A1A1A;
+  --gold: #D9A404;
   --chalk: #FAF6EA;
   --slate: #241F14;
   --slate-soft: #574E36;
@@ -31,10 +26,9 @@
   --shadow-soft: 0 8px 22px -12px rgba(3, 54, 35, 0.35);
   --kente-gradient: repeating-linear-gradient(
     90deg,
-    var(--red-ink) 0 16px,
-    var(--gold-bright) 16px 32px,
-    var(--ink-green) 32px 48px,
-    var(--kente-black) 48px 54px
+    var(--red-ink) 0 18px,
+    var(--gold) 18px 36px,
+    var(--ink-green) 36px 54px
   );
 }
 
@@ -51,9 +45,13 @@ html, body {
 
 body {
   min-height: 100vh;
+  background-color: var(--ink-green);
   background-image:
-    radial-gradient(circle at 15% 8%, rgba(252, 209, 22, 0.09), transparent 40%),
-    radial-gradient(circle at 85% 92%, rgba(206, 17, 38, 0.08), transparent 45%);
+    radial-gradient(circle at 15% 8%, rgba(217, 164, 4, 0.10), transparent 40%),
+    radial-gradient(circle at 85% 92%, rgba(206, 17, 38, 0.07), transparent 45%),
+    url("ghana-pattern.svg");
+  background-repeat: no-repeat, no-repeat, repeat;
+  background-size: auto, auto, 300px 300px;
 }
 
 body::before {
@@ -83,7 +81,7 @@ button {
 }
 
 :focus-visible {
-  outline: 3px solid var(--brass-light);
+  outline: 3px solid var(--gold);
   outline-offset: 2px;
 }
 
@@ -172,7 +170,7 @@ h1.card-title, h2.card-title {
   font-weight: 600;
   font-size: clamp(22px, 4vw, 30px);
   margin: 0 0 6px;
-  color: var(--ink-green-deep);
+  color: var(--ink-green);
 }
 
 .subtext {
@@ -227,7 +225,7 @@ textarea {
 textarea { resize: vertical; min-height: 90px; }
 
 input:focus, select:focus, textarea:focus {
-  border-color: var(--brass);
+  border-color: var(--gold);
 }
 
 .row { display: flex; gap: 14px; flex-wrap: wrap; }
@@ -254,7 +252,7 @@ input:focus, select:focus, textarea:focus {
   color: var(--chalk);
   box-shadow: var(--shadow-soft);
 }
-.btn-primary:hover { background: var(--ink-green-deep); }
+.btn-primary:hover { background: var(--ink-green); }
 
 .btn-secondary {
   background: transparent;
@@ -304,7 +302,7 @@ input:focus, select:focus, textarea:focus {
   font-family: var(--font-display);
   font-size: 19px;
   margin: 4px 0 6px;
-  color: var(--ink-green-deep);
+  color: var(--ink-green);
 }
 .role-card p { font-size: 13px; color: var(--slate-soft); margin: 0 0 14px; }
 
@@ -357,8 +355,8 @@ input:focus, select:focus, textarea:focus {
   font-size: 10.5px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--brass);
-  border: 1px solid var(--brass);
+  color: var(--gold);
+  border: 1px solid var(--gold);
   border-radius: var(--radius-pill);
   padding: 3px 9px;
 }
@@ -374,12 +372,12 @@ input:focus, select:focus, textarea:focus {
 .timer-track { fill: none; stroke: var(--line); stroke-width: 6; }
 .timer-progress {
   fill: none;
-  stroke: var(--brass);
+  stroke: var(--gold);
   stroke-width: 6;
   stroke-linecap: round;
   transition: stroke-dashoffset 1s linear, stroke 0.3s ease;
 }
-.timer-progress.critical { stroke: var(--red-ink-bright); }
+.timer-progress.critical { stroke: var(--red-ink); animation: pulse-critical 1s ease-in-out infinite; }
 .timer-num {
   position: absolute;
   inset: 0;
@@ -389,14 +387,14 @@ input:focus, select:focus, textarea:focus {
   font-family: var(--font-mono);
   font-weight: 600;
   font-size: 15px;
-  color: var(--ink-green-deep);
+  color: var(--ink-green);
 }
 .timer-num.critical { color: var(--red-ink); }
 
 .question-text {
   font-family: var(--font-display);
   font-size: clamp(18px, 3vw, 22px);
-  color: var(--ink-green-deep);
+  color: var(--ink-green);
   line-height: 1.4;
   margin: 6px 0 22px;
 }
@@ -416,7 +414,7 @@ input:focus, select:focus, textarea:focus {
   font-size: 15px;
   overflow: hidden;
 }
-.option:hover:not(:disabled) { border-color: var(--brass); }
+.option:hover:not(:disabled) { border-color: var(--gold); }
 .option:disabled { cursor: default; }
 
 .option .opt-letter {
@@ -450,7 +448,7 @@ input:focus, select:focus, textarea:focus {
 }
 .progress-line > div {
   height: 100%;
-  background: var(--brass);
+  background: var(--gold);
   transition: width 0.4s ease;
 }
 
@@ -462,7 +460,7 @@ input:focus, select:focus, textarea:focus {
 .score-num {
   font-family: var(--font-display);
   font-size: clamp(48px, 10vw, 72px);
-  color: var(--ink-green-deep);
+  color: var(--ink-green);
   line-height: 1;
 }
 .score-label {
@@ -481,8 +479,8 @@ input:focus, select:focus, textarea:focus {
   font-size: 14px;
   padding: 6px 16px;
   border-radius: var(--radius-pill);
-  background: var(--brass);
-  color: var(--ink-green-deep);
+  background: var(--gold);
+  color: var(--ink-green);
 }
 
 .review-item {
@@ -565,6 +563,7 @@ table.data th {
   border-top-color: var(--ink-green);
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+@keyframes pulse-critical { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
 
 /* ---------- Footer ---------- */
 .site-footer {
@@ -582,7 +581,7 @@ table.data th {
   font-style: italic;
   font-size: 14px;
   letter-spacing: 0.02em;
-  color: var(--gold-bright);
+  color: var(--gold);
   margin-bottom: 6px;
 }
 
@@ -666,9 +665,9 @@ table.data th {
   background: #FFFEFA;
   cursor: pointer;
 }
-.dropzone.drag-over { border-color: var(--brass); background: rgba(252, 209, 22, 0.08); }
+.dropzone.drag-over { border-color: var(--gold); background: rgba(252, 209, 22, 0.08); }
 .dropzone input[type="file"] { display: none; }
-.dropzone .dz-title { font-weight: 600; color: var(--ink-green-deep); margin-bottom: 4px; }
+.dropzone .dz-title { font-weight: 600; color: var(--ink-green); margin-bottom: 4px; }
 
 /* ---------- Gradebook ---------- */
 .gradebook-tabs {

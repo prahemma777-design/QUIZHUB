@@ -50,6 +50,19 @@ service cloud.firestore {
       allow delete: if false;
     }
 
+    match /students/{username} {
+      allow read: if true;
+      allow create: if !exists(/databases/$(database)/documents/students/$(username));
+      allow update: if false;
+      allow delete: if false;
+
+      match /history/{quizId} {
+        allow read: if true;
+        allow create, update: if true; // written once per quiz after the student finishes
+        allow delete: if false;
+      }
+    }
+
     match /quizzes/{quizId} {
       allow read: if true;
       allow create, update: if true;
@@ -93,7 +106,7 @@ These rules stop the most common issues (overwriting another student's attempt, 
 
 Being upfront about the trade-offs of a backend-free app:
 
-- **No real teacher login.** Signing up creates a document in Firestore's `teachers` collection with your username, email, and a SHA-256 **hash** of your password (never the password itself). This stops the most casual snooping, but it is **not** the same as proper authentication — there's no session token, no email verification, and (because `allow read: if true` is needed for the login screen to check a password) anyone technical enough to open Firestore directly could read the stored hashes and attempt to crack a weak password offline. Don't reuse an important password here. If you need real accounts, ask Claude to add Firebase Authentication (email/password sign-in) in a follow-up — that removes this limitation entirely.
+- **No real login, for teachers or students.** Signing up (either role) creates a document in Firestore with a username and a SHA-256 **hash** of the password (never the password itself). This stops the most casual snooping, but it is **not** the same as proper authentication — there's no session token, no email verification, and (because `allow read: if true` is needed for the login screen to check a password) anyone technical enough to open Firestore directly could read the stored hashes and attempt to crack a weak password offline. Encourage students not to reuse an important password here. If you need real accounts, ask Claude to add Firebase Authentication in a follow-up — that removes this limitation entirely.
 - **The answer key does reach the browser.** Unlike a fully server-graded system, each question's `correctIndex` is part of the quiz document a student's browser downloads to run the quiz (this is what makes instant auto-grading and offline-friendly timing possible without a backend). A technically determined student could open browser dev tools and read the Firestore response to see correct answers early. The app never displays the answer key during the quiz, and the Firestore rules above stop tampering with scores after submission — but this is a real limitation of an app with no server, not just this one.
 - **No-retry is enforced by document ID, not just the UI.** A submission's Firestore document ID is generated from the student's name + class, so even a student editing the page's JavaScript can't create a second submission with the same identity — Firestore itself will refuse it (see the `allow create` rule above).
 - **Duplicate names across classes are fine.** Because the ID includes the class, "Mensah, Ama" in SHS2 Gold and "Mensah, Ama" in SHS2 Blue are treated as different people, as expected.
@@ -114,6 +127,7 @@ If this app will be used for high-stakes exams (not just class quizzes), conside
 | `firebase-config.js` | Your Firebase project credentials (edit this first) |
 | `manifest.json` / `service-worker.js` | Makes the app installable and gives it an offline app shell |
 | `icon-192.png` / `icon-512.png` / `logo-full.png` | App icons and the header/footer logo |
+| `ghana-pattern.svg` | Tiled Adinkra/castle/museum motif on the background |
 
 ---
 

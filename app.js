@@ -75,6 +75,22 @@ const App = (() => {
     }
   };
 
+  const StudentSession = {
+    getUsername() { return localStorage.getItem("quizhub_student_username") || ""; },
+    getName() { return localStorage.getItem("quizhub_student_name") || ""; },
+    getClass() { return localStorage.getItem("quizhub_student_class") || ""; },
+    setStudent(username, name, className) {
+      localStorage.setItem("quizhub_student_username", username);
+      localStorage.setItem("quizhub_student_name", name || "");
+      localStorage.setItem("quizhub_student_class", className || "");
+    },
+    clearStudent() {
+      localStorage.removeItem("quizhub_student_username");
+      localStorage.removeItem("quizhub_student_name");
+      localStorage.removeItem("quizhub_student_class");
+    }
+  };
+
   async function hashPassword(pw) {
     const enc = new TextEncoder().encode(pw);
     const hashBuffer = await crypto.subtle.digest("SHA-256", enc);
@@ -109,6 +125,8 @@ const App = (() => {
       renderStudentEntry(quizId);
     } else if (hash === "teacher") {
       renderTeacherArea();
+    } else if (hash === "student") {
+      renderStudentArea();
     } else {
       renderHome();
     }
@@ -121,11 +139,12 @@ const App = (() => {
      ============================================================ */
 
   function renderHome() {
+    const studentUsername = StudentSession.getUsername();
     shell(`
       <div class="card wide">
         <p class="eyebrow">Welcome</p>
         <h1 class="card-title">Who's opening QUIZHUB?</h1>
-        <p class="subtext">Teachers set up and mark quizzes. Students only need a quiz link shared on WhatsApp — there's nothing to pick here for them.</p>
+        <p class="subtext">Teachers set up and mark quizzes. Students take quizzes from a shared link and can keep track of their own results here.</p>
         <div class="role-grid">
           <div class="role-card">
             <h3>I'm a teacher</h3>
@@ -134,12 +153,18 @@ const App = (() => {
           </div>
           <div class="role-card">
             <h3>I'm a student</h3>
-            <p>Open the quiz link your teacher shared with you on WhatsApp — it will bring you straight here.</p>
-            <button class="btn btn-secondary" disabled>Waiting for a quiz link</button>
+            <p>${studentUsername
+              ? `Welcome back, ${escapeHtml(StudentSession.getName())}. Check your past scores, or open a quiz link your teacher shared.`
+              : `Create a student account to keep track of every quiz you take, or open a quiz link your teacher shared on WhatsApp.`}</p>
+            <button class="btn btn-secondary" onclick="App.goStudent()">${studentUsername ? "Go to my dashboard" : "Student login / sign up"}</button>
           </div>
         </div>
       </div>
     `);
+  }
+
+  function goStudent() {
+    window.location.hash = "student";
   }
 
   function goTeacher() {
@@ -280,6 +305,201 @@ const App = (() => {
       errEl.innerHTML = `<div class="alert alert-error">Couldn't log in: ${escapeHtml(err.message)}</div>`;
       btn.disabled = false; btn.textContent = "Log in";
     }
+  }
+
+  /* ============================================================
+     STUDENT AREA (accounts + dashboard)
+     ============================================================ */
+
+  function renderStudentArea() {
+    const username = StudentSession.getUsername();
+    if (!username) return renderStudentAuth();
+    renderStudentDashboard(username);
+  }
+
+  function renderStudentAuth(activeTab = "login") {
+    shell(`
+      <div class="card">
+        <p class="eyebrow">Student access</p>
+        <h1 class="card-title">${activeTab === "login" ? "Log in" : "Create your account"}</h1>
+        <p class="subtext">Your account keeps a record of every quiz you take, so you can look back on your scores any time.</p>
+
+        <div class="tab-row">
+          <button class="tab-btn ${activeTab === "login" ? "active" : ""}" onclick="App.renderStudentAuth('login')">Log in</button>
+          <button class="tab-btn ${activeTab === "signup" ? "active" : ""}" onclick="App.renderStudentAuth('signup')">Sign up</button>
+        </div>
+
+        <div id="authError"></div>
+
+        ${activeTab === "login" ? `
+          <div class="field"><label>Username</label><input type="text" id="studentLoginUsername" autocomplete="username" /></div>
+          <div class="field"><label>Password</label><input type="password" id="studentLoginPassword" autocomplete="current-password" /></div>
+          <button class="btn btn-primary btn-block" id="studentLoginBtn" onclick="App.submitStudentLogin()">Log in</button>
+        ` : `
+          <div class="field"><label>Full name</label><input type="text" id="studentSignupName" placeholder="e.g. Mensah Ama Grace" /></div>
+          <p class="hint" style="margin-top:-8px;margin-bottom:14px">Surname first, then first name, then middle name — this fills in your details automatically each time you take a quiz.</p>
+          <div class="field"><label>Class</label><input type="text" id="studentSignupClass" placeholder="e.g. SHS2 Gold" /></div>
+          <div class="field"><label>Username</label><input type="text" id="studentSignupUsername" autocomplete="username" /></div>
+          <div class="row">
+            <div class="field"><label>Password</label><input type="password" id="studentSignupPassword" autocomplete="new-password" /></div>
+            <div class="field"><label>Confirm password</label><input type="password" id="studentSignupPassword2" autocomplete="new-password" /></div>
+          </div>
+          <button class="btn btn-primary btn-block" id="studentSignupBtn" onclick="App.submitStudentSignup()">Create account</button>
+        `}
+
+        <p class="small mt-8"><a href="#" onclick="App.goHome();return false;">&larr; Back</a></p>
+      </div>
+    `);
+  }
+
+  async function submitStudentSignup() {
+    const name = document.getElementById("studentSignupName").value.trim();
+    const className = document.getElementById("studentSignupClass").value.trim();
+    const username = document.getElementById("studentSignupUsername").value.trim();
+    const pw = document.getElementById("studentSignupPassword").value;
+    const pw2 = document.getElementById("studentSignupPassword2").value;
+    const errEl = document.getElementById("authError");
+    errEl.innerHTML = "";
+
+    if (!name || !className || !username || !pw) {
+      errEl.innerHTML = `<div class="alert alert-error">Please fill in every field.</div>`;
+      return;
+    }
+    if (pw.length < 6) {
+      errEl.innerHTML = `<div class="alert alert-error">Password must be at least 6 characters.</div>`;
+      return;
+    }
+    if (pw !== pw2) {
+      errEl.innerHTML = `<div class="alert alert-error">Passwords don't match.</div>`;
+      return;
+    }
+
+    const usernameKey = slugify(username);
+    const btn = document.getElementById("studentSignupBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Creating account…`;
+
+    try {
+      const ref = db.collection("students").doc(usernameKey);
+      const existing = await ref.get();
+      if (existing.exists) {
+        errEl.innerHTML = `<div class="alert alert-error">That username is already taken — please choose another.</div>`;
+        btn.disabled = false; btn.textContent = "Create account";
+        return;
+      }
+      const passwordHash = await hashPassword(pw);
+      await ref.set({ name, className, username, passwordHash, createdAtMs: Date.now() });
+      StudentSession.setStudent(usernameKey, name, className);
+      returnToPendingQuizOrDashboard();
+    } catch (err) {
+      errEl.innerHTML = `<div class="alert alert-error">Couldn't create the account: ${escapeHtml(err.message)}. Check your Firestore rules allow writes to the "students" collection.</div>`;
+      btn.disabled = false; btn.textContent = "Create account";
+    }
+  }
+
+  async function submitStudentLogin() {
+    const username = document.getElementById("studentLoginUsername").value.trim();
+    const pw = document.getElementById("studentLoginPassword").value;
+    const errEl = document.getElementById("authError");
+    errEl.innerHTML = "";
+
+    if (!username || !pw) {
+      errEl.innerHTML = `<div class="alert alert-error">Enter both your username and password.</div>`;
+      return;
+    }
+
+    const usernameKey = slugify(username);
+    const btn = document.getElementById("studentLoginBtn");
+    btn.disabled = true;
+    btn.innerHTML = `<span class="spinner"></span> Logging in…`;
+
+    try {
+      const ref = db.collection("students").doc(usernameKey);
+      const doc = await ref.get();
+      if (!doc.exists) {
+        errEl.innerHTML = `<div class="alert alert-error">No account found with that username.</div>`;
+        btn.disabled = false; btn.textContent = "Log in";
+        return;
+      }
+      const data = doc.data();
+      const hash = await hashPassword(pw);
+      if (hash !== data.passwordHash) {
+        errEl.innerHTML = `<div class="alert alert-error">Incorrect password.</div>`;
+        btn.disabled = false; btn.textContent = "Log in";
+        return;
+      }
+      StudentSession.setStudent(usernameKey, data.name, data.className);
+      returnToPendingQuizOrDashboard();
+    } catch (err) {
+      errEl.innerHTML = `<div class="alert alert-error">Couldn't log in: ${escapeHtml(err.message)}</div>`;
+      btn.disabled = false; btn.textContent = "Log in";
+    }
+  }
+
+  function returnToPendingQuizOrDashboard() {
+    const pendingQuizId = sessionStorage.getItem("quizhub_return_quiz");
+    if (pendingQuizId) {
+      sessionStorage.removeItem("quizhub_return_quiz");
+      window.location.href = window.location.pathname + "?quiz=" + encodeURIComponent(pendingQuizId);
+      return;
+    }
+    renderStudentArea();
+  }
+
+  function logoutStudent() { StudentSession.clearStudent(); renderStudentArea(); }
+
+  function renderStudentDashboard(usernameKey) {
+    shell(`
+      <div class="card wide">
+        <div class="exam-header">
+          <div>
+            <p class="eyebrow">${escapeHtml(StudentSession.getClass())}</p>
+            <h1 class="card-title">${escapeHtml(StudentSession.getName())}</h1>
+          </div>
+          <div class="btn-row">
+            <button class="btn btn-secondary" onclick="App.logoutStudent()">Log out</button>
+          </div>
+        </div>
+        <p class="subtext">Every quiz you complete while logged in shows up here automatically.</p>
+        <div id="studentHistoryWrap"><p class="small">Loading your results…</p></div>
+      </div>
+    `, { tagline: "My dashboard" });
+
+    db.collection("students").doc(usernameKey).collection("history")
+      .get()
+      .then(snap => {
+        const rows = [];
+        snap.forEach(d => rows.push(d.data()));
+        rows.sort((a, b) => (b.dateMs || 0) - (a.dateMs || 0));
+        const wrap = document.getElementById("studentHistoryWrap");
+        if (rows.length === 0) {
+          wrap.innerHTML = `<p class="small">No quizzes taken yet — open a quiz link your teacher shares, and it'll show up here once you finish.</p>`;
+          return;
+        }
+        wrap.innerHTML = `
+          <div class="table-wrap">
+            <table class="data">
+              <thead><tr><th>Subject</th><th>Assessment</th><th>Teacher</th><th>Score</th><th>Grade</th><th>Date</th></tr></thead>
+              <tbody>
+                ${rows.map(r => `
+                  <tr>
+                    <td>${escapeHtml(r.subject || "")}</td>
+                    <td>${escapeHtml(r.typeOfWork || "")} · Wk${escapeHtml(String(r.week || ""))}</td>
+                    <td>${escapeHtml(r.teacherName || "")}${r.schoolName ? " · " + escapeHtml(r.schoolName) : ""}</td>
+                    <td>${r.score}/${r.totalQuestions} (${(r.percentage || 0).toFixed(0)}%)</td>
+                    <td>${escapeHtml(grade(r.percentage || 0))}</td>
+                    <td>${r.dateMs ? new Date(r.dateMs).toLocaleDateString() : ""}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+      })
+      .catch(err => {
+        document.getElementById("studentHistoryWrap").innerHTML =
+          `<div class="alert alert-error">Couldn't load your results: ${escapeHtml(err.message)}</div>`;
+      });
   }
 
   let teacherQuizzesCache = [];
@@ -974,6 +1194,7 @@ DOK: 2
 
   let activeQuiz = null;
   let activeSubmissionId = null;
+  let activeSubmissionClassName = null;
   let activeOrder = [];
   let activeAnswers = [];
   let currentPos = 0;
@@ -1000,19 +1221,33 @@ DOK: 2
   }
 
   function renderStudentRegistration(quiz) {
+    const loggedInName = StudentSession.getUsername() ? StudentSession.getName() : "";
+    const loggedInClass = StudentSession.getUsername() ? StudentSession.getClass() : "";
+    // Best-effort split of "Surname First Middle" for prefill — still fully editable.
+    const nameParts = loggedInName.split(/\s+/).filter(Boolean);
+    const preSurname = nameParts[0] || "";
+    const preFirst = nameParts[1] || "";
+    const preMiddle = nameParts.slice(2).join(" ");
+
     shell(`
       <div class="card">
         <p class="eyebrow">${escapeHtml(quiz.subject)} · ${escapeHtml(quiz.typeOfWork)}</p>
         <h1 class="card-title">Candidate details</h1>
         <p class="subtext">Set by ${escapeHtml(quiz.teacherName)}${quiz.schoolName ? " · " + escapeHtml(quiz.schoolName) : ""} · ${escapeHtml(quiz.level)} · Week ${escapeHtml(String(quiz.week))} · ${(quiz.questions || []).length} questions</p>
 
+        ${StudentSession.getUsername() ? `
+          <div class="alert alert-info">Logged in as <strong>${escapeHtml(loggedInName)}</strong> — your details are pre-filled below and this result will be saved to your dashboard. <a href="#" onclick="App.switchStudentAccount();return false;">Not you?</a></div>
+        ` : `
+          <div class="alert alert-info">Have a QUIZHUB account? <a href="#" onclick="App.goStudentThenReturn('${quiz.id}');return false;">Log in first</a> to save this result to a dashboard — or just continue as a guest below.</div>
+        `}
+
         <div id="regError"></div>
 
         <div class="row">
-          <div class="field"><label>Surname</label><input type="text" id="r_surname" /></div>
-          <div class="field"><label>First name</label><input type="text" id="r_first" /></div>
+          <div class="field"><label>Surname</label><input type="text" id="r_surname" value="${escapeHtml(preSurname)}" /></div>
+          <div class="field"><label>First name</label><input type="text" id="r_first" value="${escapeHtml(preFirst)}" /></div>
         </div>
-        <div class="field"><label>Middle name (if any)</label><input type="text" id="r_middle" /></div>
+        <div class="field"><label>Middle name (if any)</label><input type="text" id="r_middle" value="${escapeHtml(preMiddle)}" /></div>
         <div class="row">
           <div class="field"><label>Level</label>
             <select id="r_level">
@@ -1024,10 +1259,10 @@ DOK: 2
           <div class="field"><label>Class</label>
             ${(quiz.classes && quiz.classes.length > 0)
               ? `<select id="r_class">
-                  <option value="" disabled selected>Choose your class…</option>
-                  ${quiz.classes.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join("")}
+                  <option value="" disabled ${!loggedInClass ? "selected" : ""}>Choose your class…</option>
+                  ${quiz.classes.map(c => `<option value="${escapeHtml(c)}" ${c === loggedInClass ? "selected" : ""}>${escapeHtml(c)}</option>`).join("")}
                 </select>`
-              : `<input type="text" id="r_class" placeholder="e.g. SHS2 Gold" />`
+              : `<input type="text" id="r_class" placeholder="e.g. SHS2 Gold" value="${escapeHtml(loggedInClass)}" />`
             }
           </div>
         </div>
@@ -1037,6 +1272,20 @@ DOK: 2
         <button class="btn btn-primary btn-block" id="startBtn" onclick="App.beginAttempt('${quiz.id}')">Start quiz</button>
       </div>
     `, { tagline: "Candidate registration" });
+  }
+
+  function getActiveQuizForRerender() { return activeQuiz; }
+
+  function switchStudentAccount() {
+    StudentSession.clearStudent();
+    if (activeQuiz) renderStudentRegistration(activeQuiz);
+  }
+
+  function goStudentThenReturn(quizId) {
+    // Preserve the quiz link so login can hand the student straight back
+    // into registration instead of losing their place.
+    sessionStorage.setItem("quizhub_return_quiz", quizId);
+    window.location.href = window.location.pathname + "#student";
   }
 
   async function beginAttempt(quizId) {
@@ -1077,6 +1326,7 @@ DOK: 2
       await subRef.set(submission);
 
       activeSubmissionId = subId;
+      activeSubmissionClassName = className;
       activeOrder = order;
       activeAnswers = [];
       currentPos = 0;
@@ -1195,6 +1445,28 @@ DOK: 2
       finishedAtMs: Date.now(), status: "completed"
     });
 
+    const studentUsername = StudentSession.getUsername();
+    if (studentUsername) {
+      try {
+        await db.collection("students").doc(studentUsername)
+          .collection("history").doc(activeQuiz.id)
+          .set({
+            quizId: activeQuiz.id,
+            subject: activeQuiz.subject,
+            typeOfWork: activeQuiz.typeOfWork,
+            week: activeQuiz.week,
+            teacherName: activeQuiz.teacherName,
+            schoolName: activeQuiz.schoolName || "",
+            className: activeSubmissionClassName || "",
+            score, totalQuestions: total, percentage,
+            dateMs: Date.now()
+          });
+      } catch (err) {
+        // Non-fatal — the submission itself is already saved either way.
+        console.warn("[QUIZHUB] Couldn't save to student dashboard history:", err.message);
+      }
+    }
+
     renderStudentResults(score, total, percentage);
   }
 
@@ -1262,8 +1534,10 @@ DOK: 2
   }
 
   return {
-    init, goTeacher, goHome,
+    init, goTeacher, goHome, goStudent,
     renderTeacherAuth, submitTeacherSignup, submitTeacherLogin, logoutTeacher,
+    renderStudentArea, renderStudentAuth, submitStudentSignup, submitStudentLogin, logoutStudent,
+    getActiveQuizForRerender, goStudentThenReturn, renderStudentRegistration, switchStudentAccount,
     renderNewQuizForm, addClassChip, removeClassChip,
     startAIGeneration, runGeneration, showUploadForm, parsePastedText,
     togglePasteJson, handleDocUpload, parseUploadedQuestions, addBlankQuestion, updateQ, updateOpt, removeQ,
