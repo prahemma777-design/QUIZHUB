@@ -80,7 +80,7 @@ These rules stop the most common issues (overwriting another student's attempt, 
 
 ## 3. Deploying with GitHub Pages
 
-1. Create a new GitHub repository (e.g. `quizhub`) and upload every file in this folder, keeping the `icons/` folder structure.
+1. Create a new GitHub repository (e.g. `quizhub`) and upload every file in this folder — everything sits flat at the repo root, no subfolders needed.
 2. Go to the repo's **Settings → Pages**.
 3. Under "Build and deployment", choose **Deploy from a branch**, branch `main`, folder `/ (root)`. Save.
 4. GitHub will give you a URL like `https://yourusername.github.io/quizhub/`. That's your app's home page.
@@ -113,7 +113,7 @@ If this app will be used for high-stakes exams (not just class quizzes), conside
 | `doc-upload.js` | Parses questions from an uploaded Excel/CSV, Word, PDF, or text file |
 | `firebase-config.js` | Your Firebase project credentials (edit this first) |
 | `manifest.json` / `service-worker.js` | Makes the app installable and gives it an offline app shell |
-| `icons/` | App icons (SVG) |
+| `icon-192.png` / `icon-512.png` / `logo-full.png` | App icons and the header/footer logo |
 
 ---
 

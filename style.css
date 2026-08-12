@@ -100,30 +100,20 @@ button {
   width: 100%;
   max-width: 880px;
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   color: var(--chalk);
   margin-bottom: clamp(20px, 4vw, 36px);
 }
 
-.brand {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: clamp(22px, 3vw, 30px);
-  letter-spacing: 0.01em;
-  display: flex;
-  align-items: baseline;
-  gap: 10px;
-}
-
-.brand .brand-mark {
-  font-family: var(--font-mono);
-  font-size: 0.42em;
-  color: var(--brass-light);
-  border: 1px solid var(--line-light);
-  padding: 3px 7px;
-  border-radius: var(--radius-pill);
-  letter-spacing: 0.08em;
+.brand-logo {
+  height: clamp(38px, 6vw, 52px);
+  width: auto;
+  display: block;
+  background: var(--parchment);
+  padding: 7px 16px;
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-soft);
 }
 
 .topbar .tagline {
@@ -584,6 +574,16 @@ table.data th {
   font-size: 11.5px;
   color: rgba(243, 239, 228, 0.55);
   letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.site-footer .footer-tagline {
+  font-family: var(--font-display);
+  font-style: italic;
+  font-size: 14px;
+  letter-spacing: 0.02em;
+  color: var(--gold-bright);
+  margin-bottom: 6px;
 }
 
 /* ---------- Utility ---------- */

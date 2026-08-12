@@ -86,11 +86,14 @@ const App = (() => {
   function shell(innerHtml, { tagline = "" } = {}) {
     root.innerHTML = `
       <div class="topbar">
-        <div class="brand">QUIZHUB <span class="brand-mark">SHS</span></div>
+        <img src="logo-full.png" alt="QUIZHUB — Assess. Learn. Achieve." class="brand-logo" />
         <div class="tagline">${escapeHtml(tagline)}</div>
       </div>
       ${innerHtml}
-      <div class="site-footer">© AssifMan</div>
+      <div class="site-footer">
+        <div class="footer-tagline">Assess. Learn. Achieve.</div>
+        <div>© AssifMan</div>
+      </div>
     `;
   }
 
@@ -173,6 +176,7 @@ const App = (() => {
           <button class="btn btn-primary btn-block" id="loginBtn" onclick="App.submitTeacherLogin()">Log in</button>
         ` : `
           <div class="field"><label>Full name</label><input type="text" id="signupName" placeholder="e.g. Mr. Kwame Asante" /></div>
+          <div class="field"><label>School name</label><input type="text" id="signupSchool" placeholder="e.g. Achimota Senior High School" /></div>
           <div class="field"><label>Email</label><input type="text" id="signupEmail" autocomplete="email" placeholder="you@school.edu.gh" /></div>
           <div class="field"><label>Username</label><input type="text" id="signupUsername" autocomplete="username" placeholder="e.g. kwame.asante" /></div>
           <div class="row">
@@ -191,6 +195,7 @@ const App = (() => {
 
   async function submitTeacherSignup() {
     const name = document.getElementById("signupName").value.trim();
+    const school = document.getElementById("signupSchool").value.trim();
     const email = document.getElementById("signupEmail").value.trim();
     const username = document.getElementById("signupUsername").value.trim();
     const pw = document.getElementById("signupPassword").value;
@@ -198,7 +203,7 @@ const App = (() => {
     const errEl = document.getElementById("authError");
     errEl.innerHTML = "";
 
-    if (!name || !email || !username || !pw) {
+    if (!name || !school || !email || !username || !pw) {
       errEl.innerHTML = `<div class="alert alert-error">Please fill in every field.</div>`;
       return;
     }
@@ -229,7 +234,7 @@ const App = (() => {
         return;
       }
       const passwordHash = await hashPassword(pw);
-      await ref.set({ name, email, username, passwordHash, createdAtMs: Date.now() });
+      await ref.set({ name, school, email, username, passwordHash, createdAtMs: Date.now() });
       Session.setTeacher(usernameKey, email);
       renderTeacherArea();
     } catch (err) {
@@ -279,13 +284,14 @@ const App = (() => {
 
   let teacherQuizzesCache = [];
   let teacherDisplayName = "";
+  let teacherSchool = "";
 
   function renderTeacherDashboard(usernameKey) {
     shell(`
       <div class="card wide">
         <div class="exam-header">
           <div>
-            <p class="eyebrow">Teacher dashboard</p>
+            <p class="eyebrow" id="teacherSchoolLine">Teacher dashboard</p>
             <h1 class="card-title">Loading…</h1>
           </div>
           <div class="btn-row">
@@ -301,8 +307,11 @@ const App = (() => {
     db.collection("teachers").doc(usernameKey).get()
       .then(doc => {
         teacherDisplayName = doc.exists ? (doc.data().name || doc.data().username) : usernameKey;
+        teacherSchool = doc.exists ? (doc.data().school || "") : "";
         const titleEl = document.querySelector(".card-title");
         if (titleEl) titleEl.textContent = teacherDisplayName;
+        const schoolLine = document.getElementById("teacherSchoolLine");
+        if (schoolLine && teacherSchool) schoolLine.textContent = teacherSchool;
       })
       .catch(() => {});
 
@@ -370,6 +379,7 @@ const App = (() => {
     draftQuiz = {
       teacherUsername: Session.getUsername(),
       teacherName: teacherDisplayName || Session.getUsername(),
+      schoolName: teacherSchool || "",
       subject: "", topics: "", level: "SHS2", typeOfWork: "Class Test", week: "",
       classes: [], questions: []
     };
@@ -663,6 +673,7 @@ DOK: 2
     return {
       teacherUsername: draftQuiz.teacherUsername,
       teacherName: draftQuiz.teacherName,
+      schoolName: draftQuiz.schoolName || "",
       subject: draftQuiz.subject,
       topics: draftQuiz.topics,
       level: draftQuiz.level,
@@ -993,7 +1004,7 @@ DOK: 2
       <div class="card">
         <p class="eyebrow">${escapeHtml(quiz.subject)} · ${escapeHtml(quiz.typeOfWork)}</p>
         <h1 class="card-title">Candidate details</h1>
-        <p class="subtext">Set by ${escapeHtml(quiz.teacherName)} · ${escapeHtml(quiz.level)} · Week ${escapeHtml(String(quiz.week))} · ${(quiz.questions || []).length} questions</p>
+        <p class="subtext">Set by ${escapeHtml(quiz.teacherName)}${quiz.schoolName ? " · " + escapeHtml(quiz.schoolName) : ""} · ${escapeHtml(quiz.level)} · Week ${escapeHtml(String(quiz.week))} · ${(quiz.questions || []).length} questions</p>
 
         <div id="regError"></div>
 
@@ -1229,7 +1240,7 @@ DOK: 2
       <style>body{font-family:sans-serif;padding:24px;max-width:700px;margin:auto} h1{margin-bottom:0} .meta{color:#555;font-size:14px}</style>
       </head><body>
       <h1>QUIZHUB — Result Summary</h1>
-      <p class="meta">${escapeHtml(activeQuiz.subject)} · ${escapeHtml(activeQuiz.typeOfWork)} · Week ${escapeHtml(String(activeQuiz.week))} · Set by ${escapeHtml(activeQuiz.teacherName)}</p>
+      <p class="meta">${escapeHtml(activeQuiz.subject)} · ${escapeHtml(activeQuiz.typeOfWork)} · Week ${escapeHtml(String(activeQuiz.week))} · Set by ${escapeHtml(activeQuiz.teacherName)}${activeQuiz.schoolName ? " · " + escapeHtml(activeQuiz.schoolName) : ""}</p>
       <h2>${score}/${total} (${pct.toFixed(1)}%) — Grade ${grade(pct)}</h2>
       <hr/>${rows}
       <hr/><p>© AssifMan</p>

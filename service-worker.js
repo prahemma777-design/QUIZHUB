@@ -1,4 +1,4 @@
-const CACHE_NAME = "quizhub-v5";
+const CACHE_NAME = "quizhub-v6";
 const APP_SHELL = [
   "./index.html",
   "./style.css",
@@ -7,8 +7,8 @@ const APP_SHELL = [
   "./doc-upload.js",
   "./firebase-config.js",
   "./manifest.json",
-  "./icon-192.svg",
-  "./icon-512.svg"
+  "./icon-192.png",
+  "./icon-512.png"
 ];
 
 self.addEventListener("install", (event) => {
