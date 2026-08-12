@@ -58,7 +58,11 @@ service cloud.firestore {
 
       match /history/{quizId} {
         allow read: if true;
-        allow create, update: if true; // written once per quiz after the student finishes
+        // One history entry per quiz, ever — this is what makes "retake
+        // blocked at the account level" a database guarantee, not just
+        // a client-side check a determined student could skip past.
+        allow create: if !exists(/databases/$(database)/documents/students/$(username)/history/$(quizId));
+        allow update: if false;
         allow delete: if false;
       }
     }

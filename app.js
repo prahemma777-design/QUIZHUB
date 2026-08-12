@@ -1200,22 +1200,41 @@ DOK: 2
   let currentPos = 0;
   let timerInterval = null;
 
-  function renderStudentEntry(quizId) {
+  async function renderStudentEntry(quizId) {
     shell(`<div class="card"><p class="small">Loading quiz…</p></div>`);
-    db.collection("quizzes").doc(quizId).get().then(doc => {
+    try {
+      const doc = await db.collection("quizzes").doc(quizId).get();
       if (!doc.exists) return renderStudentError("This quiz link doesn't exist. Please check the link with your teacher.");
       const quiz = { id: doc.id, ...doc.data() };
       if (quiz.status === "closed") return renderStudentError("This quiz has closed and is no longer accepting answers.");
       if (quiz.status === "draft") return renderStudentError("This quiz hasn't been published yet. Please check with your teacher.");
+
+      const studentUsername = StudentSession.getUsername();
+      if (studentUsername) {
+        const historyDoc = await db.collection("students").doc(studentUsername)
+          .collection("history").doc(quizId).get();
+        if (historyDoc.exists) {
+          const h = historyDoc.data();
+          return renderStudentError(
+            `Your account (${StudentSession.getName()}) has already completed this quiz — scored ${h.score}/${h.totalQuestions} (${(h.percentage || 0).toFixed(0)}%). ` +
+            `Each account can only take a quiz once. You can review it on your dashboard.`,
+            true
+          );
+        }
+      }
+
       activeQuiz = quiz;
       renderStudentRegistration(quiz);
-    }).catch(err => renderStudentError("Couldn't load this quiz: " + err.message));
+    } catch (err) {
+      renderStudentError("Couldn't load this quiz: " + err.message);
+    }
   }
 
-  function renderStudentError(msg) {
+  function renderStudentError(msg, showDashboardLink = false) {
     shell(`
       <div class="card">
         <div class="alert alert-error">${escapeHtml(msg)}</div>
+        ${showDashboardLink ? `<button class="btn btn-secondary btn-block" onclick="App.goStudent()">Go to my dashboard</button>` : ""}
       </div>
     `);
   }
@@ -1308,6 +1327,18 @@ DOK: 2
     startBtn.innerHTML = `<span class="spinner"></span> Checking…`;
 
     try {
+      const studentUsername = StudentSession.getUsername();
+      if (studentUsername) {
+        const historyDoc = await db.collection("students").doc(studentUsername)
+          .collection("history").doc(quizId).get();
+        if (historyDoc.exists) {
+          errEl.innerHTML = `<div class="alert alert-error">Your account has already completed this quiz — each account can only take a quiz once.</div>`;
+          startBtn.disabled = false;
+          startBtn.textContent = "Start quiz";
+          return;
+        }
+      }
+
       const subRef = db.collection("quizzes").doc(quizId).collection("submissions").doc(subId);
       const existing = await subRef.get();
       if (existing.exists) {
