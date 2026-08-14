@@ -79,15 +79,18 @@ const App = (() => {
     getUsername() { return localStorage.getItem("quizhub_student_username") || ""; },
     getName() { return localStorage.getItem("quizhub_student_name") || ""; },
     getClass() { return localStorage.getItem("quizhub_student_class") || ""; },
-    setStudent(username, name, className) {
+    getSchool() { return localStorage.getItem("quizhub_student_school") || ""; },
+    setStudent(username, name, className, school) {
       localStorage.setItem("quizhub_student_username", username);
       localStorage.setItem("quizhub_student_name", name || "");
       localStorage.setItem("quizhub_student_class", className || "");
+      localStorage.setItem("quizhub_student_school", school || "");
     },
     clearStudent() {
       localStorage.removeItem("quizhub_student_username");
       localStorage.removeItem("quizhub_student_name");
       localStorage.removeItem("quizhub_student_class");
+      localStorage.removeItem("quizhub_student_school");
     }
   };
 
@@ -338,6 +341,7 @@ const App = (() => {
         ` : `
           <div class="field"><label>Full name</label><input type="text" id="studentSignupName" placeholder="e.g. Mensah Ama Grace" /></div>
           <p class="hint" style="margin-top:-8px;margin-bottom:14px">Surname first, then first name, then middle name — this fills in your details automatically each time you take a quiz.</p>
+          <div class="field"><label>School</label><input type="text" id="studentSignupSchool" placeholder="e.g. Achimota Senior High School" /></div>
           <div class="field"><label>Class</label><input type="text" id="studentSignupClass" placeholder="e.g. SHS2 Gold" /></div>
           <div class="field"><label>Username</label><input type="text" id="studentSignupUsername" autocomplete="username" /></div>
           <div class="row">
@@ -354,6 +358,7 @@ const App = (() => {
 
   async function submitStudentSignup() {
     const name = document.getElementById("studentSignupName").value.trim();
+    const school = document.getElementById("studentSignupSchool").value.trim();
     const className = document.getElementById("studentSignupClass").value.trim();
     const username = document.getElementById("studentSignupUsername").value.trim();
     const pw = document.getElementById("studentSignupPassword").value;
@@ -361,7 +366,7 @@ const App = (() => {
     const errEl = document.getElementById("authError");
     errEl.innerHTML = "";
 
-    if (!name || !className || !username || !pw) {
+    if (!name || !school || !className || !username || !pw) {
       errEl.innerHTML = `<div class="alert alert-error">Please fill in every field.</div>`;
       return;
     }
@@ -388,8 +393,8 @@ const App = (() => {
         return;
       }
       const passwordHash = await hashPassword(pw);
-      await ref.set({ name, className, username, passwordHash, createdAtMs: Date.now() });
-      StudentSession.setStudent(usernameKey, name, className);
+      await ref.set({ name, school, className, username, passwordHash, createdAtMs: Date.now() });
+      StudentSession.setStudent(usernameKey, name, className, school);
       returnToPendingQuizOrDashboard();
     } catch (err) {
       errEl.innerHTML = `<div class="alert alert-error">Couldn't create the account: ${escapeHtml(err.message)}. Check your Firestore rules allow writes to the "students" collection.</div>`;
@@ -428,7 +433,7 @@ const App = (() => {
         btn.disabled = false; btn.textContent = "Log in";
         return;
       }
-      StudentSession.setStudent(usernameKey, data.name, data.className);
+      StudentSession.setStudent(usernameKey, data.name, data.className, data.school);
       returnToPendingQuizOrDashboard();
     } catch (err) {
       errEl.innerHTML = `<div class="alert alert-error">Couldn't log in: ${escapeHtml(err.message)}</div>`;
@@ -453,14 +458,15 @@ const App = (() => {
       <div class="card wide">
         <div class="exam-header">
           <div>
-            <p class="eyebrow">${escapeHtml(StudentSession.getClass())}</p>
+            <p class="eyebrow">${escapeHtml(StudentSession.getSchool())}</p>
             <h1 class="card-title">${escapeHtml(StudentSession.getName())}</h1>
+            <p class="small mt-8">Class: <strong>${escapeHtml(StudentSession.getClass())}</strong></p>
           </div>
           <div class="btn-row">
             <button class="btn btn-secondary" onclick="App.logoutStudent()">Log out</button>
           </div>
         </div>
-        <p class="subtext">Every quiz you complete while logged in shows up here automatically.</p>
+        <p class="subtext">Every quiz you complete while logged in shows up here automatically — from any teacher, any school.</p>
         <div id="studentHistoryWrap"><p class="small">Loading your results…</p></div>
       </div>
     `, { tagline: "My dashboard" });
@@ -601,7 +607,7 @@ const App = (() => {
       teacherName: teacherDisplayName || Session.getUsername(),
       schoolName: teacherSchool || "",
       subject: "", topics: "", level: "SHS2", typeOfWork: "Class Test", week: "",
-      classes: [], questions: []
+      classes: [], timing: { noncalc: 50, calc: 80 }, questions: []
     };
     shell(`
       <div class="card wide">
@@ -627,6 +633,10 @@ const App = (() => {
             </select>
           </div>
           <div class="field"><label>Week</label><input type="text" id="f_week" placeholder="e.g. Week 6" /></div>
+        </div>
+        <div class="row">
+          <div class="field"><label>Seconds per question (no calculation)</label><input type="number" id="f_timeNoncalc" value="50" min="10" max="600" /></div>
+          <div class="field"><label>Seconds per question (calculation)</label><input type="number" id="f_timeCalc" value="80" min="10" max="600" /></div>
         </div>
         <div class="field">
           <label>Classes this test is for</label>
@@ -677,6 +687,12 @@ const App = (() => {
     draftQuiz.level = document.getElementById("f_level").value;
     draftQuiz.typeOfWork = document.getElementById("f_type").value;
     draftQuiz.week = document.getElementById("f_week").value.trim();
+    const tNoncalc = Number(document.getElementById("f_timeNoncalc").value);
+    const tCalc = Number(document.getElementById("f_timeCalc").value);
+    draftQuiz.timing = {
+      noncalc: tNoncalc >= 10 && tNoncalc <= 600 ? tNoncalc : 50,
+      calc: tCalc >= 10 && tCalc <= 600 ? tCalc : 80
+    };
   }
 
   function renderGenOrUploadChoice() {
@@ -756,8 +772,12 @@ DOK: 2
 
       <div class="dropzone" id="fileDropzone" onclick="document.getElementById('f_uploadDoc').click()">
         <div class="dz-title">Or upload a file instead</div>
-        <p class="small">.docx, .pdf, or .txt — same numbered format as above</p>
+        <p class="small">.docx, .pdf, or .txt. For Word docs, using Word's own numbered-list and bullet buttons works directly — no need to retype "1." or "A)". Mark the correct option with <strong>bold</strong>, a "*", or an "Answer: B" line.</p>
         <input type="file" id="f_uploadDoc" accept=".docx,.pdf,.txt" onchange="App.handleDocUpload(this)" />
+      </div>
+
+      <div class="alert alert-info" style="margin-top:10px">
+        <strong>Uploading a PDF instead?</strong> PDFs don't carry Word's list structure, so numbers/letters still need to be typed as real characters (e.g. "1.", "A)") for those to be picked up.
       </div>
 
       <div id="genStatus" class="mt-24"></div>
@@ -861,8 +881,8 @@ DOK: 2
         `).join("")}
         <div class="q-meta-row">
           <select onchange="App.updateQ(${idx}, 'type', this.value)">
-            <option value="noncalc" ${q.type === "noncalc" ? "selected" : ""}>No calculation (50s)</option>
-            <option value="calc" ${q.type === "calc" ? "selected" : ""}>Calculation (80s)</option>
+            <option value="noncalc" ${q.type === "noncalc" ? "selected" : ""}>No calculation (${(draftQuiz.timing && draftQuiz.timing.noncalc) || 50}s)</option>
+            <option value="calc" ${q.type === "calc" ? "selected" : ""}>Calculation (${(draftQuiz.timing && draftQuiz.timing.calc) || 80}s)</option>
           </select>
           <select onchange="App.updateQ(${idx}, 'dok', Number(this.value))">
             ${[1, 2, 3, 4].map(d => `<option value="${d}" ${q.dok === d ? "selected" : ""}>DOK ${d}</option>`).join("")}
@@ -900,6 +920,7 @@ DOK: 2
       typeOfWork: draftQuiz.typeOfWork,
       week: draftQuiz.week,
       classes: draftQuiz.classes || [],
+      timing: draftQuiz.timing || { noncalc: 50, calc: 80 },
       questions: draftQuiz.questions,
       status,
       createdAtMs: Date.now()
@@ -957,12 +978,14 @@ DOK: 2
     const q = teacherQuizzesCache.find(x => x.id === quizId);
     if (!q) return;
     renderNewQuizForm();
-    draftQuiz = { ...q, classes: [...(q.classes || [])], questions: [...(q.questions || [])] };
+    draftQuiz = { ...q, classes: [...(q.classes || [])], questions: [...(q.questions || [])], timing: { ...(q.timing || { noncalc: 50, calc: 80 }) } };
     document.getElementById("f_subject").value = q.subject;
     document.getElementById("f_topics").value = q.topics;
     document.getElementById("f_level").value = q.level;
     document.getElementById("f_type").value = q.typeOfWork;
     document.getElementById("f_week").value = q.week;
+    document.getElementById("f_timeNoncalc").value = (q.timing && q.timing.noncalc) || 50;
+    document.getElementById("f_timeCalc").value = (q.timing && q.timing.calc) || 80;
     renderClassChips();
     renderQuestionEditor();
   }
@@ -1374,7 +1397,8 @@ DOK: 2
     const total = activeOrder.length;
     const qIndex = activeOrder[currentPos];
     const q = activeQuiz.questions[qIndex];
-    const duration = TIMING[q.type] || TIMING.noncalc;
+    const quizTiming = activeQuiz.timing || TIMING;
+    const duration = quizTiming[q.type] || TIMING[q.type] || TIMING.noncalc;
     const pct = Math.round((currentPos / total) * 100);
 
     shell(`

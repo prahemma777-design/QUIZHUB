@@ -1,4 +1,4 @@
-const CACHE_NAME = "quizhub-v7";
+const CACHE_NAME = "quizhub-v8";
 const APP_SHELL = [
   "./index.html",
   "./style.css",
